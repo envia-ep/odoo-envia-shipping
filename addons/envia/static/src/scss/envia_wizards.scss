@@ -1,0 +1,642 @@
+.o_envia_quote_wizard,
+.o_envia_create_label_wizard {
+    .o_envia_address_preview {
+        padding: 0.5rem 0.75rem;
+        border-radius: $border-radius;
+        background-color: $o-gray-100;
+        border: 1px solid $border-color;
+        font-size: $font-size-sm;
+        line-height: 1.45;
+        white-space: pre-line;
+    }
+
+    .o_envia_context_chip {
+        .o_field_widget {
+            margin-bottom: 0;
+        }
+
+        .o_field_many2one .o_external_button,
+        .o_field_many2one .o_dropdown_button {
+            display: none;
+        }
+    }
+
+    .o_envia_stat_box {
+        padding: 0.75rem;
+        border-radius: $border-radius;
+        border: 1px solid $border-color;
+        background-color: $o-gray-100;
+        font-size: $font-size-sm;
+        height: 100%;
+    }
+
+    .o_envia_stat_label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: $font-size-sm * 0.85;
+        font-weight: $font-weight-bold;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: $o-gray-600;
+    }
+}
+
+.o_envia_quote_wizard {
+    .o_envia_address_card {
+        &_origin {
+            border-top: 3px solid $o-brand-odoo !important;
+        }
+
+        &_destination {
+            border-top: 3px solid $o-info !important;
+        }
+
+        h6 {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: $font-size-base;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+    }
+
+    .o_envia_branch_search {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .o_envia_branch_search_hint {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        padding: 0.55rem 0.7rem;
+        border-radius: $border-radius;
+        background-color: rgba($o-info, 0.08);
+        border: 1px solid rgba($o-info, 0.15);
+        color: $o-gray-700;
+        font-size: $font-size-sm;
+        line-height: 1.45;
+
+        .fa-info-circle {
+            margin-top: 0.1rem;
+            color: $o-info;
+        }
+    }
+
+    .o_envia_branch_search_fields {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.85rem;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+        background-color: $o-gray-100;
+    }
+
+    .o_envia_branch_search_field {
+        .o_field_widget {
+            width: 100%;
+            margin-bottom: 0;
+        }
+
+        .o_input,
+        .o-autocomplete--input {
+            min-height: 2.15rem;
+        }
+    }
+
+    .o_envia_field_label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: $font-size-sm * 0.85;
+        font-weight: $font-weight-bold;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: $o-gray-600;
+    }
+
+    .o_envia_branch_search_actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding-top: 0.15rem;
+
+        .btn-link {
+            padding-left: 0;
+            text-decoration: none;
+        }
+    }
+
+    .o_envia_btn_destination {
+        color: $o-white;
+        background-color: $o-info;
+        border-color: $o-info;
+
+        &:hover,
+        &:focus {
+            color: $o-white;
+            background-color: darken($o-info, 6%);
+            border-color: darken($o-info, 6%);
+        }
+    }
+
+    .o_envia_branch_selected {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        padding: 0.65rem 0.8rem;
+        border-radius: $border-radius;
+        background-color: rgba($o-success, 0.1);
+        border: 1px solid rgba($o-success, 0.28);
+        color: darken($o-success, 14%);
+
+        .fa-check-circle {
+            flex-shrink: 0;
+            margin-top: 0.15rem;
+            font-size: 1.1rem;
+        }
+
+        .o_envia_branch_selected_text {
+            min-width: 0;
+            font-size: $font-size-sm;
+            line-height: 1.35;
+        }
+
+        .o_envia_branch_selected_title {
+            display: block;
+            margin-bottom: 0.1rem;
+            font-size: $font-size-sm * 0.8;
+            font-weight: $font-weight-bold;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            opacity: 0.85;
+        }
+    }
+
+    .o_envia_branch_panel {
+        padding: 1rem 1.15rem;
+        border: 1px solid $border-color;
+        border-radius: $border-radius-lg;
+        background-color: $o-view-background-color;
+
+        &_origin {
+            border-top: 3px solid $o-brand-odoo;
+        }
+
+        &_destination {
+            border-top: 3px solid $o-info;
+        }
+    }
+
+    .o_envia_branch_panel_header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.85rem;
+    }
+
+    .o_envia_branch_panel_title {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: $font-size-base;
+        font-weight: $font-weight-bold;
+        color: $o-gray-800;
+
+        .fa {
+            color: $o-gray-600;
+        }
+    }
+
+    .o_envia_branch_empty {
+        padding: 1.5rem 0.75rem;
+        border: 1px dashed $border-color;
+        border-radius: $border-radius;
+        background-color: $o-gray-100;
+        text-align: center;
+        color: $o-gray-600;
+        font-size: $font-size-sm;
+
+        .fa-building-o {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 1.5rem;
+            opacity: 0.45;
+        }
+    }
+
+    .o_envia_branch_list .o_list_renderer {
+        min-height: 8rem;
+        max-height: 20rem;
+        overflow: auto;
+        border: 1px solid $border-color;
+        border-radius: $border-radius;
+
+        .o_list_table {
+            margin-bottom: 0;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background-color: $o-gray-100;
+        }
+
+        .o_data_row.text-success {
+            background-color: rgba($o-success, 0.08) !important;
+        }
+    }
+}
+
+.o_form_view.o_envia_quote_wizard_page {
+    .o_form_sheet_bg,
+    .o_form_sheet {
+        max-width: none;
+    }
+}
+
+.o_envia_create_label_wizard {
+    .o_envia_rate_card {
+        border-top: 3px solid $o-brand-odoo !important;
+    }
+}
+
+.o_envia_api_key_field {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+    background-color: $o-view-background-color;
+
+    .o_envia_api_key_value {
+        font-size: $font-size-sm;
+        line-height: 1.4;
+        user-select: all;
+    }
+
+    .o_btn_char_copy {
+        flex-shrink: 0;
+    }
+}
+
+.o_base_settings_view {
+    .o_envia_settings_integration_info {
+        border-radius: $border-radius;
+
+        .o_field_widget {
+            margin-bottom: 0;
+        }
+
+        input.o_input {
+            color: $o-gray-800;
+            cursor: text;
+        }
+    }
+
+    .o_envia_settings_alert {
+        border-radius: $border-radius;
+    }
+
+    .o_envia_settings_url_preview {
+        padding: 0.65rem 0.75rem;
+        border-radius: $border-radius;
+        background-color: $o-gray-100;
+        border: 1px solid $border-color;
+    }
+
+    .o_envia_settings_url_label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: $font-size-sm * 0.85;
+        font-weight: $font-weight-bold;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: $o-gray-600;
+    }
+
+    .o_envia_settings_url_value {
+        display: block;
+        margin-bottom: 0;
+        font-size: $font-size-sm;
+        color: $o-gray-800;
+        word-break: break-all;
+    }
+
+    .o_envia_settings_label_row {
+        .o_form_label {
+            margin-bottom: 0.25rem;
+            font-size: $font-size-sm;
+            font-weight: $font-weight-bold;
+            color: $o-gray-700;
+        }
+    }
+
+    .o_envia_carrier_tags {
+        .o_field_many2many_tags {
+            width: 100%;
+            min-height: 2.25rem;
+        }
+
+        .o_tag {
+            font-size: $font-size-sm;
+        }
+    }
+
+    .o_setting_box {
+        .badge {
+            font-size: $font-size-sm * 0.85;
+            font-weight: $font-weight-normal;
+        }
+    }
+}
+
+.o_form_view.o_envia_plugin_connect_wizard {
+    .o_content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: $o-gray-100;
+        padding: clamp(1rem, 3vw, 2.5rem);
+    }
+
+    .o_form_renderer {
+        width: 100%;
+        max-width: 42rem !important;
+        flex: 0 0 auto;
+        margin: 0 !important;
+    }
+
+    .o_form_sheet_bg {
+        --formView-sheetBg-padding-x: 0;
+        --formView-sheetBg-padding-right: 0;
+        background: transparent;
+        padding: 0;
+    }
+
+    .o_form_sheet {
+        --formView-sheet-margin-x: 0;
+        --formView-sheet-margin-x-md: 0;
+        --formView-sheet-border-width: 1px;
+        --formView-sheet-border-radius: #{$border-radius-lg};
+        width: 100%;
+        margin: 0 !important;
+        border-radius: $border-radius-lg;
+        box-shadow: $box-shadow-sm;
+        background-color: $o-view-background-color;
+    }
+
+    .o_envia_welcome_screen {
+        width: 100%;
+        padding: clamp(1.25rem, 3vw, 2.5rem) clamp(0.75rem, 2vw, 1.25rem);
+    }
+
+    .o_envia_welcome_content {
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    .o_envia_welcome_lead {
+        margin-bottom: 1.5rem;
+    }
+
+    .o_envia_welcome_steps {
+        width: 100%;
+    }
+
+    .o_envia_welcome_step {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.85rem;
+        padding: 0.75rem 0;
+
+        & + .o_envia_welcome_step {
+            border-top: 1px solid $border-color;
+        }
+    }
+
+    .o_envia_welcome_step_number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 50%;
+        background-color: $o-brand-odoo;
+        color: $o-white;
+        font-size: $font-size-sm;
+        font-weight: $font-weight-bold;
+        flex-shrink: 0;
+    }
+
+    .o_envia_welcome_store_preview {
+        width: 100%;
+        padding: 0.85rem 1rem;
+        border-radius: $border-radius;
+        background-color: $o-gray-100;
+        border: 1px solid $border-color;
+    }
+
+    .o_envia_welcome_store_label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: $font-size-sm * 0.85;
+        font-weight: $font-weight-bold;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: $o-gray-600;
+    }
+
+    .o_envia_welcome_store_value {
+        display: block;
+        margin-bottom: 0;
+        font-size: $font-size-sm;
+        word-break: break-all;
+    }
+
+    .o_envia_welcome_actions {
+        margin-top: 0.75rem;
+
+        .btn {
+            width: 100%;
+        }
+    }
+
+    .o_envia_external_waiting_screen {
+        width: 100%;
+        padding: clamp(1.25rem, 3vw, 2.5rem) clamp(0.75rem, 2vw, 1.25rem);
+    }
+
+    .o_envia_external_waiting_content {
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    .o_envia_external_waiting_badge {
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding: 0.35rem 0.85rem;
+        border-radius: 999px;
+        background-color: rgba($o-success, 0.12);
+        color: darken($o-success, 8%);
+        font-size: $font-size-sm;
+        font-weight: $font-weight-bold;
+        letter-spacing: 0.02em;
+    }
+
+    .o_envia_external_waiting_loader {
+        position: relative;
+        width: 5.5rem;
+        height: 5.5rem;
+        margin: 0 auto 1.5rem;
+    }
+
+    .o_envia_external_waiting_loader_ring {
+        position: absolute;
+        inset: 0;
+        border: 2px solid rgba($o-brand-odoo, 0.35);
+        border-radius: 50%;
+        animation: o_envia_waiting_ring 2s ease-out infinite;
+    }
+
+    .o_envia_external_waiting_loader_ring_delay {
+        animation-delay: 1s;
+    }
+
+    .o_envia_external_waiting_loader_icon {
+        position: absolute;
+        inset: 0.95rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: linear-gradient(
+            145deg,
+            rgba($o-brand-odoo, 0.14),
+            rgba($o-brand-odoo, 0.04)
+        );
+        color: $o-brand-odoo;
+        font-size: 1.75rem;
+    }
+
+    .o_envia_external_waiting_title {
+        font-size: clamp(1.5rem, 2.5vw, 1.85rem);
+        font-weight: $font-weight-bold;
+        color: $o-gray-900;
+    }
+
+    .o_envia_external_waiting_lead {
+        max-width: 32rem;
+        margin-left: auto;
+        margin-right: auto;
+        font-size: $font-size-base;
+        line-height: 1.55;
+    }
+
+    .o_envia_external_waiting_steps {
+        width: 100%;
+        padding: 0.25rem 0;
+        border-radius: $border-radius-lg;
+        background-color: $o-gray-100;
+        border: 1px solid $border-color;
+    }
+
+    .o_envia_external_waiting_step_done {
+        .o_envia_welcome_step_number {
+            background-color: $o-success;
+        }
+    }
+
+    .o_envia_external_waiting_step_active {
+        background-color: rgba($o-brand-odoo, 0.06);
+        border-radius: $border-radius;
+        margin: 0 0.5rem;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+
+        .o_envia_welcome_step_number {
+            box-shadow: 0 0 0 4px rgba($o-brand-odoo, 0.15);
+        }
+    }
+
+    .o_envia_external_waiting_step_pending {
+        opacity: 0.72;
+    }
+
+    .o_envia_external_waiting_hint {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.35rem;
+        padding: 0.85rem 1rem;
+        border-radius: $border-radius;
+        background-color: rgba($o-info, 0.08);
+        border: 1px solid rgba($o-info, 0.18);
+        font-size: $font-size-sm;
+        line-height: 1.5;
+        color: $o-gray-700;
+    }
+
+    .o_envia_external_waiting_status {
+        font-size: $font-size-sm;
+        font-weight: $font-weight-bold;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+    }
+
+    .o_envia_external_waiting_dots {
+        display: inline-flex;
+        gap: 0.1rem;
+        margin-left: 0.15rem;
+
+        span {
+            animation: o_envia_waiting_dot 1.4s infinite;
+            opacity: 0.25;
+
+            &:nth-child(2) {
+                animation-delay: 0.2s;
+            }
+
+            &:nth-child(3) {
+                animation-delay: 0.4s;
+            }
+        }
+    }
+}
+
+@keyframes o_envia_waiting_ring {
+    0% {
+        transform: scale(0.82);
+        opacity: 0.75;
+    }
+
+    70%,
+    100% {
+        transform: scale(1.18);
+        opacity: 0;
+    }
+}
+
+@keyframes o_envia_waiting_dot {
+    0%,
+    80%,
+    100% {
+        opacity: 0.2;
+    }
+
+    40% {
+        opacity: 1;
+    }
+}
+
+@media (min-width: 576px) {
+    .o_form_view.o_envia_plugin_connect_wizard {
+        .o_envia_welcome_actions .btn {
+            width: auto;
+            min-width: 16rem;
+        }
+    }
+}

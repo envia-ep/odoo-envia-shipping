@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_ecart_store_list" model="ir.ui.view">
+        <field name="name">ecart.store.list</field>
+        <field name="model">ecart.store</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="ecommerce"/>
+                <field name="store_url"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="last_sync_at"/>
+                <field name="sale_order_count"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_ecart_store_form" model="ir.ui.view">
+        <field name="name">ecart.store.form</field>
+        <field name="model">ecart.store</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_test_connection" type="object"
+                            string="Test Connection" class="btn-secondary"/>
+                    <button name="action_import_orders" type="object"
+                            string="Import Orders" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_sale_orders" type="object"
+                                class="oe_stat_button" icon="fa-shopping-cart">
+                            <field name="sale_order_count" widget="statinfo"
+                                   string="Imported Orders"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="store_name"/>
+                            <field name="ecommerce"/>
+                            <field name="store_url"/>
+                            <field name="ecart_user_id" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="partner_id"/>
+                            <field name="last_sync_at"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="Credentials" groups="base.group_system">
+                        <field name="access_token" password="True"/>
+                        <field name="refresh_token" password="True"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_ecart_store" model="ir.actions.act_window">
+        <field name="name">ECart Stores</field>
+        <field name="res_model">ecart.store</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_ecart_root"
+              name="ECart"
+              parent="sale.sale_menu_root"
+              sequence="50"/>
+    <menuitem id="menu_ecart_stores"
+              name="Connected Stores"
+              parent="menu_ecart_root"
+              action="action_ecart_store"
+              sequence="10"/>
+</odoo>

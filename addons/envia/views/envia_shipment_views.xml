@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_envia_shipment_list" model="ir.ui.view">
+        <field name="name">envia.shipment.list</field>
+        <field name="model">envia.shipment</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'delivered'"
+                  decoration-muted="state == 'cancelled'">
+                <field name="name"/>
+                <field name="tracking_number"/>
+                <field name="carrier_name"/>
+                <field name="service_name"/>
+                <field name="status"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'delivered'"
+                       decoration-info="state == 'in_transit'"
+                       decoration-danger="state == 'cancelled'"/>
+                <field name="sale_order_id"/>
+                <field name="picking_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_envia_shipment_form" model="ir.ui.view">
+        <field name="name">envia.shipment.form</field>
+        <field name="model">envia.shipment</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_open_label" type="object" string="Download Label"
+                            class="btn-primary"
+                            invisible="not label_attachment_id and not label_url"/>
+                    <button name="action_track_shipment" type="object" string="Refresh Tracking"
+                            invisible="not tracking_number"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,created,in_transit,delivered"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button type="object" name="action_track_shipment" class="oe_stat_button"
+                                icon="fa-truck" invisible="not tracking_number">
+                            <field name="tracking_number" widget="statinfo" string="Tracking"/>
+                        </button>
+                        <button type="object" name="action_open_label" class="oe_stat_button"
+                                icon="fa-file-pdf-o"
+                                invisible="not label_attachment_id and not label_url">
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Label</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div class="oe_title mb-3">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                        <p class="text-muted mb-0" invisible="not carrier_name">
+                            <field name="carrier_name" readonly="1" class="oe_inline"/>
+                            <span> · </span>
+                            <field name="service_name" readonly="1" class="oe_inline"/>
+                        </p>
+                    </div>
+
+                    <group>
+                        <group string="Documents">
+                            <field name="quote_id"/>
+                            <field name="sale_order_id"/>
+                            <field name="picking_id"/>
+                            <field name="external_shipment_id"/>
+                        </group>
+                        <group string="Status">
+                            <field name="carrier"/>
+                            <field name="status"/>
+                            <field name="status_description"/>
+                            <field name="pricing_total"/>
+                            <field name="pricing_currency_id"/>
+                        </group>
+                    </group>
+
+                    <group string="Label">
+                        <field name="label_url" widget="url"/>
+                        <field name="label_attachment_id"/>
+                    </group>
+
+                    <notebook>
+                        <page string="Tracking timeline">
+                            <field name="tracking_event_ids">
+                                <list default_order="event_timestamp desc">
+                                    <field name="event_timestamp"/>
+                                    <field name="location"/>
+                                    <field name="status"/>
+                                    <field name="description"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_envia_shipment" model="ir.actions.act_window">
+        <field name="name">Envia Shipments</field>
+        <field name="res_model">envia.shipment</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_envia_shipments" name="Shipments" parent="menu_envia_root"
+              action="action_envia_shipment" sequence="20"/>
+</odoo>

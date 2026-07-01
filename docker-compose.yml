@@ -1,0 +1,47 @@
+# Envia OAuth / Eshop endpoints — single switch point for the whole stack.
+# Active profile: change the merge anchor in odoo.environment (dev or prod).
+x-envia-oauth-dev: &envia-oauth-dev
+  ENVIA_OAUTH_INTEGRATION_URL: https://oauth-deve.herokuapp.com/oauth/11GGRQY2At8E05EGtLeLO1IZzvpvjMmi/integration/odoo
+  ENVIA_OAUTH_POPUP_URL: https://oauth-deve.herokuapp.com/j4CVuDzGDiA2sxu0YYOYndiE4XkonsFb?ecommerce=odoo
+  ENVIA_ESHOP_TEST_URL: https://eshop-deve.herokuapp.com/api/v2/test
+  ENVIA_ESHOP_ACCESSES_ME_URL: https://eshop-deve.herokuapp.com/accesses/me
+
+x-envia-oauth-prod: &envia-oauth-prod
+  # Replace client/popup tokens with production values from Envia.com before use.
+  ENVIA_OAUTH_INTEGRATION_URL: https://oauth.herokuapp.com/oauth/REPLACE_PROD_CLIENT_ID/integration/odoo
+  ENVIA_OAUTH_POPUP_URL: https://oauth.herokuapp.com/REPLACE_PROD_POPUP_TOKEN?ecommerce=odoo
+  ENVIA_ESHOP_TEST_URL: https://eshop.herokuapp.com/api/v2/test
+  ENVIA_ESHOP_ACCESSES_ME_URL: https://eshop.herokuapp.com/accesses/me
+
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+      POSTGRES_DB: postgres
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  odoo:
+    image: odoo:19
+    depends_on:
+      - db
+    ports:
+      - "8069:8069"
+    volumes:
+      - ./addons:/mnt/extra-addons
+      - ./config/odoo.conf:/etc/odoo/odoo.conf
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: odoo
+      <<: *envia-oauth-dev
+      # <<: *envia-oauth-prod
+    restart: unless-stopped
+
+volumes:
+  odoo-db-data:
