@@ -24,6 +24,22 @@ class ResConfigSettings(models.TransientModel):
         related="company_id.envia_default_origin_partner_id",
         readonly=False,
     )
+    envia_enable_branches = fields.Boolean(
+        related="company_id.envia_enable_branches",
+        readonly=False,
+    )
+    envia_default_carrier = fields.Boolean(
+        related="company_id.envia_default_carrier",
+        readonly=False,
+    )
+    envia_enable_labels = fields.Boolean(
+        related="company_id.envia_enable_labels",
+        readonly=False,
+    )
+    envia_show_quote_archive = fields.Boolean(
+        related="company_id.envia_show_quote_archive",
+        readonly=False,
+    )
     envia_label_format = fields.Selection(related="company_id.envia_label_format", readonly=False)
     envia_label_size = fields.Selection(related="company_id.envia_label_size", readonly=False)
     envia_effective_base_url = fields.Char(
@@ -38,6 +54,19 @@ class ResConfigSettings(models.TransientModel):
     envia_plugin_version_display = fields.Char(
         string="Envia Plugin Version Display",
         compute="_compute_envia_plugin_version_display",
+        readonly=True,
+    )
+    envia_module_version_display = fields.Char(
+        string="Envia Module Version",
+        compute="_compute_envia_module_version_display",
+        readonly=True,
+    )
+    envia_oauth_status_connected = fields.Char(
+        compute="_compute_envia_oauth_status_labels",
+        readonly=True,
+    )
+    envia_oauth_status_disconnected = fields.Char(
+        compute="_compute_envia_oauth_status_labels",
         readonly=True,
     )
     envia_integration_api_key = fields.Char(
@@ -85,31 +114,22 @@ class ResConfigSettings(models.TransientModel):
         compute="_compute_envia_integration_database_name",
         readonly=True,
     )
-    envia_shop_id = fields.Char(related="company_id.envia_shop_id", readonly=True)
-    envia_integration_info_display = fields.Char(
-        string="Integration Info",
-        compute="_compute_envia_integration_info_display",
-        readonly=True,
-    )
 
-    @api.depends(
-        "envia_oauth_connected",
-        "envia_plugin_version",
-        "envia_shop_id",
-    )
-    def _compute_envia_integration_info_display(self) -> None:
+    def _compute_envia_module_version_display(self) -> None:
+        module_version = get_envia_module_version(self.env)
         for record in self:
-            if not record.envia_oauth_connected:
-                record.envia_integration_info_display = False
-                continue
-            version = (
-                normalize_envia_plugin_version(record.envia_plugin_version)
-                or get_envia_module_version(record.env)
-            )
-            store_id = (record.envia_shop_id or "").strip() or "—"
-            record.envia_integration_info_display = (
-                f"Version: {version} | Origin: Odoo | StoreID: {store_id}"
-            )
+            record.envia_module_version_display = module_version
+
+    @api.depends("envia_oauth_connected")
+    @api.depends_context("lang")
+    def _compute_envia_oauth_status_labels(self) -> None:
+        # ponytail: inline es/en labels; code .po terms do not import reliably from the 6MB catalog
+        spanish = (self.env.lang or "en_US").startswith("es")
+        connected = "Conectado" if spanish else "Connected"
+        disconnected = "No conectado" if spanish else "Not connected"
+        for record in self:
+            record.envia_oauth_status_connected = connected
+            record.envia_oauth_status_disconnected = disconnected
 
     @api.depends_context("uid")
     def _compute_envia_integration_callback_url(self) -> None:
@@ -195,6 +215,9 @@ class ResConfigSettings(models.TransientModel):
         for settings in self:
             if settings.company_id._envia_is_shipping_api_configured():
                 clear_pending_setup(self.env)
+            quotes_menu = self.env.ref("envia.menu_envia_quotes", raise_if_not_found=False)
+            if quotes_menu:
+                quotes_menu.active = settings.envia_show_quote_archive
 
     @api.model
     def get_envia_adapter(self):
@@ -244,3 +267,13 @@ class ResConfigSettings(models.TransientModel):
     def action_open_envia_plugin_connect_wizard(self):
         self.ensure_one()
         return self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()
+
+    def action_envia_refresh_integration_token(self):
+        self.ensure_one()
+        if not self.env.user.has_group("base.group_system"):
+            raise UserError(_("Only administrators can refresh the Envia integration token."))
+        company = self.company_id
+        wizard_model = self.env["envia.plugin.connect.wizard"]
+        if company.envia_oauth_connected:
+            return wizard_model.action_open_refresh_integration_wizard(company)
+        return wizard_model.action_open_connect_wizard()

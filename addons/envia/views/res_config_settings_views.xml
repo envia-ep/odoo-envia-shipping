@@ -7,83 +7,56 @@
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
                 <app string="Envia.com" name="envia">
-                    <field name="envia_is_sandbox" invisible="1"/>
-                    <field name="envia_is_production" invisible="1"/>
                     <field name="envia_has_api_token" invisible="1"/>
-                    <field name="envia_effective_base_url" invisible="1"/>
+                    <field name="envia_oauth_connected" invisible="1"/>
 
-                    <setting type="header" string="Environment">
-                        <field name="envia_environment" widget="radio" options="{'horizontal': true}"/>
-                    </setting>
-
-                    <block title="API Connection"
-                           help="Connect Odoo to Envia.com. Use sandbox for testing and production for live labels.">
-                        <setting invisible="not envia_is_production"
-                                 help="Production mode: labels are real and Envia will charge your account."/>
-                        <setting invisible="not envia_is_sandbox"
-                                 help="Sandbox mode: safe for testing. Load demo data to try the quote flow quickly.">
-                            <button name="action_load_envia_demo_data" type="object"
-                                    string="Load demo data"
-                                    class="btn btn-sm btn-outline-primary"
-                                    icon="fa-magic"/>
-                        </setting>
-                        <setting string="Envia Shipping API Token"
-                                 help="Bearer token for api.envia.com (quoting, labels, tracking). This value is saved by Envia.com through the integration callback and cannot be edited here. Use the eye icon to reveal it and the clipboard icon to copy it.">
-                            <field name="envia_has_api_token" invisible="1"/>
-                            <field name="envia_api_token_display"
-                                   widget="envia_api_key"
-                                   nolabel="1"
-                                   readonly="1"
-                                   groups="base.group_system"/>
-                            <div class="text-muted small mt-1"
-                                 invisible="envia_has_api_token"
-                                 groups="base.group_system">
-                                No token stored yet. Complete the Envia.com connection or wait for the integration callback.
-                            </div>
-                            <div class="mt-2" invisible="not envia_has_api_token">
-                                <button name="action_test_envia_connection" type="object"
-                                        string="Test connection"
-                                        class="btn btn-secondary"
-                                        icon="fa-plug"/>
-                            </div>
-                        </setting>
-                        <setting string="Base URL"
-                                 help="Leave empty to use the default URL for the selected environment.">
-                            <field name="envia_base_url" placeholder="Leave empty for default"/>
-                            <field name="envia_effective_base_url" readonly="1" class="mt-2 o_envia_settings_endpoint"/>
-                        </setting>
-                    </block>
-
-                    <block title="External Plugin"
-                           help="Connect Odoo with Envia.com using the OAuth integration API.">
-                        <setting string="Envia.com connection"
-                                 help="Connect your Odoo store with Envia.com. Only administrators can manage this connection.">
-                            <field name="envia_oauth_connected" invisible="1"/>
-                            <div class="d-flex flex-wrap align-items-center gap-2">
-                                <button name="action_open_envia_plugin_connect_wizard" type="object"
-                                        string="Connect with Envia.com"
-                                        class="btn btn-primary"
-                                        icon="fa-plug"
-                                        groups="base.group_system"/>
-                                <span class="badge rounded-pill text-bg-success"
-                                      invisible="not envia_oauth_connected">
-                                    Connected
-                                </span>
-                                <span class="text-muted"
-                                      invisible="not envia_oauth_connected">
-                                    Version <field name="envia_plugin_version_display" nolabel="1" readonly="1" class="oe_inline"/>
-                                </span>
-                            </div>
-                            <div class="o_envia_settings_integration_info alert alert-info py-2 mb-0 mt-2"
-                                 invisible="not envia_oauth_connected">
-                                <field name="envia_integration_info_display"
-                                       nolabel="1"
-                                       readonly="1"
-                                       class="font-monospace user-select-all border-0 bg-transparent p-0 w-100"/>
+                    <block title="Connection"
+                           help="Link your Odoo store with Envia.com and manage integration credentials.">
+                        <setting string="Envia.com"
+                                 help="Connect your store with Envia.com. Only administrators can refresh the integration token.">
+                            <div class="o_envia_settings_connection_card">
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <div invisible="not envia_oauth_connected"
+                                             class="badge rounded-pill text-bg-success o_envia_connection_badge">
+                                            <field name="envia_oauth_status_connected"
+                                                   nolabel="1"
+                                                   readonly="1"/>
+                                        </div>
+                                        <div invisible="envia_oauth_connected"
+                                             class="badge rounded-pill text-bg-secondary o_envia_connection_badge">
+                                            <field name="envia_oauth_status_disconnected"
+                                                   nolabel="1"
+                                                   readonly="1"/>
+                                        </div>
+                                    </div>
+                                    <button name="action_envia_refresh_integration_token" type="object"
+                                            string="Refresh token"
+                                            class="btn btn-secondary btn-sm"
+                                            icon="fa-refresh"
+                                            groups="base.group_system"/>
+                                </div>
+                                <div class="o_envia_settings_version_row d-flex flex-wrap gap-2 mt-2">
+                                    <span class="o_envia_settings_version_chip">
+                                        <span class="o_envia_settings_version_label">Module</span>
+                                        <field name="envia_module_version_display"
+                                               nolabel="1"
+                                               readonly="1"
+                                               class="oe_inline"/>
+                                    </span>
+                                    <span class="o_envia_settings_version_chip"
+                                          invisible="not envia_oauth_connected">
+                                        <span class="o_envia_settings_version_label">Plugin</span>
+                                        <field name="envia_plugin_version_display"
+                                               nolabel="1"
+                                               readonly="1"
+                                               class="oe_inline"/>
+                                    </span>
+                                </div>
                             </div>
                         </setting>
-                        <setting string="Odoo API Key for Envia.com"
-                                 help="Odoo API key that Envia.com must send in the Authorization header. Only administrators can view and copy this key."
+                        <setting string="Odoo API key"
+                                 help="API key Envia.com uses to call back into Odoo. Generate it here and copy it into your Envia.com integration setup."
                                  groups="base.group_system">
                             <field name="envia_integration_api_key"
                                    widget="envia_api_key"
@@ -96,55 +69,47 @@
                                         invisible="envia_integration_api_key"
                                         icon="fa-key"/>
                                 <span class="text-muted small" invisible="envia_integration_api_key">
-                                    Generate a key to copy and configure the Envia.com callback.
+                                    Generate a key to configure the Envia.com callback.
                                 </span>
                             </div>
                         </setting>
-                        <setting string="Odoo database name"
-                                 help="Dynamic Odoo database name for this session. Sent to Envia.com during the OAuth popup setup."
+                        <setting string="Envia shipping token"
+                                 help="Bearer token for api.envia.com (quoting, labels, tracking). Saved automatically by Envia.com during integration."
                                  groups="base.group_system">
-                            <field name="envia_integration_database_name"
+                            <field name="envia_api_token_display"
                                    widget="envia_api_key"
                                    nolabel="1"
                                    readonly="1"/>
+                            <div class="text-muted small mt-2"
+                                 invisible="envia_has_api_token">
+                                No token stored yet. Complete the Envia.com connection or wait for the integration callback.
+                            </div>
+                            <div class="mt-2" invisible="not envia_has_api_token">
+                                <button name="action_test_envia_connection" type="object"
+                                        string="Test connection"
+                                        class="btn btn-secondary btn-sm"
+                                        icon="fa-plug"/>
+                            </div>
                         </setting>
-                        <setting string="Integration callback URL"
-                                 help="Envia.com must POST integration results here after the OAuth popup. Send the Odoo API key in the Authorization header. Odoo resolves the database automatically. Required JSON fields: status, hash, shop, company, user."
-                                 groups="base.group_system">
-                            <field name="envia_integration_callback_url"
-                                   widget="envia_api_key"
-                                   nolabel="1"
-                                   readonly="1"/>
+                    </block>
+
+                    <block title="Shipping defaults"
+                           help="Default origin and carriers used when quoting from sales orders and Add shipping.">
+                        <setting string="Default ship-from address"
+                                 help="Origin for Envia quotes. Must include street, city, postal code, country, phone and email. Destination comes from the customer delivery address on the order.">
+                            <field name="envia_default_origin_partner_id"
+                                   options="{'no_create': True}"
+                                   domain="[('type', 'in', ['contact', 'other', 'invoice'])]"/>
                         </setting>
-                        <setting string="Envia shop ID"
-                                 help="Store identifier returned by Envia.com during integration."
-                                 invisible="not envia_oauth_connected">
-                            <field name="envia_shop_id" readonly="1"/>
+                        <setting string="Default carriers"
+                                 help="Carriers requested when quoting all Envia rates.">
+                            <field name="envia_default_carrier_ids" widget="many2many_tags"/>
                         </setting>
-                        <setting string="OAuth connection window"
-                                 help="By default Envia.com opens in a new browser tab (recommended). Enable this only if you prefer a smaller pop-up window."
-                                 groups="base.group_system">
-                            <field name="envia_oauth_use_sized_popup"/>
+                        <setting>
+                            <field name="envia_default_carrier"/>
                         </setting>
-                        <setting string="OAuth popup URL"
-                                 help="Iframe URL opened during plugin setup. Override with ENVIA_OAUTH_POPUP_URL in the server environment."
-                                 groups="base.group_system">
-                            <field name="envia_oauth_popup_url"/>
-                        </setting>
-                        <setting string="OAuth integration URL"
-                                 help="Override with ENVIA_OAUTH_INTEGRATION_URL in the server environment."
-                                 groups="base.group_system">
-                            <field name="envia_oauth_integration_url"/>
-                        </setting>
-                        <setting string="Eshop test URL"
-                                 help="Override with ENVIA_ESHOP_TEST_URL in the server environment."
-                                 groups="base.group_system">
-                            <field name="envia_eshop_test_url"/>
-                        </setting>
-                        <setting string="Eshop accesses me URL"
-                                 help="Override with ENVIA_ESHOP_ACCESSES_ME_URL in the server environment."
-                                 groups="base.group_system">
-                            <field name="envia_eshop_accesses_me_url"/>
+                        <setting>
+                            <field name="envia_enable_branches"/>
                         </setting>
                     </block>
                 </app>
