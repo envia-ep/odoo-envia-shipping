@@ -148,7 +148,7 @@ class TestEnviaPluginConnectWizard(TransactionCase):
         action = wizard.action_poll_integration_status()
         wizard.invalidate_recordset()
         self.assertEqual(wizard.state, "success")
-        self.assertEqual(action["res_model"], "envia.plugin.connect.wizard")
+        self.assertEqual(action["res_model"], "res.config.settings")
 
     def test_return_to_connect_screen_keeps_ready_state(self):
         wizard = self.env["envia.plugin.connect.wizard"].create_wizard_for_company(self.env.company)
@@ -272,22 +272,62 @@ class TestEnviaPluginConnectWizard(TransactionCase):
 
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.get")
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.post")
-    def test_refresh_token_regenerates_credentials_and_reconnects(self, mock_post, mock_get):
+    def test_refresh_token_reuses_stored_api_key_and_reconnects(self, mock_post, mock_get):
         _mock_oauth_success(mock_get, mock_post)
         wizard = self.env["envia.plugin.connect.wizard"].create_wizard_for_company(self.env.company)
         wizard.action_run_integration()
         wizard.action_finalize_integration()
         self.assertEqual(wizard.state, "success")
         previous_api_key = wizard.api_key
+        self.assertEqual(self.env.company.envia_integration_api_key, previous_api_key)
 
         wizard.action_refresh_token()
-        self.assertEqual(wizard.state, "success")
+        self.assertEqual(wizard.state, "waiting_external")
+        self.assertTrue(wizard.external_popup_url)
+        self.assertEqual(wizard.api_key, previous_api_key)
+
+    def test_refresh_token_generates_api_key_when_missing(self):
+        self.env.company.write(
+            {
+                "envia_oauth_connected": True,
+                "envia_integration_api_key": False,
+            }
+        )
+        wizard = self.env["envia.plugin.connect.wizard"]._create_connected_wizard(self.env.company)
+        wizard.action_refresh_token()
+        self.assertEqual(wizard.state, "waiting_external")
+        self.assertTrue(self.env.company.envia_integration_api_key)
         self.assertTrue(wizard.api_key)
-        self.assertNotEqual(wizard.api_key, previous_api_key)
 
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.get")
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.post")
-    def test_open_wizard_shows_connected_state_when_already_linked(self, mock_post, mock_get):
+    def test_refresh_token_regenerates_revoked_api_key(self, mock_post, mock_get):
+        _mock_oauth_success(mock_get, mock_post)
+        wizard = self.env["envia.plugin.connect.wizard"].create_wizard_for_company(self.env.company)
+        wizard.action_run_integration()
+        wizard.action_finalize_integration()
+        previous_api_key = self.env.company.envia_integration_api_key
+        self.env.company.write({"envia_integration_api_key": "revoked-stale-key-12345678901234567890"})
+
+        wizard.action_refresh_token()
+
+        self.env.company.invalidate_recordset()
+        self.assertEqual(wizard.state, "waiting_external")
+        self.assertNotEqual(self.env.company.envia_integration_api_key, "revoked-stale-key-12345678901234567890")
+        self.assertTrue(self.env.company._envia_integration_api_key_is_valid())
+
+    def test_open_connect_wizard_opens_settings_when_already_linked(self):
+        self.env.company.write(
+            {
+                "envia_oauth_connected": True,
+                "envia_oauth_access_token": False,
+            }
+        )
+        action = self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()
+        self.assertEqual(action["res_model"], "res.config.settings")
+
+    @patch("odoo.addons.envia.services.envia_oauth_client.requests.get")
+    def test_create_connected_wizard_shows_version_sync_hint_when_token_missing(self, mock_get):
         self.env.company.write(
             {
                 "envia_oauth_connected": True,
@@ -295,30 +335,16 @@ class TestEnviaPluginConnectWizard(TransactionCase):
                 "envia_plugin_version": False,
             }
         )
-        action = self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()
-        wizard = self.env["envia.plugin.connect.wizard"].browse(action["res_id"])
+        wizard = self.env["envia.plugin.connect.wizard"]._create_connected_wizard(self.env.company)
         self.assertEqual(wizard.state, "success")
         self.assertEqual(
             wizard.plugin_version_display,
             "Not synced — click Refresh token",
         )
 
-    def test_open_wizard_loads_stored_api_key_when_already_linked(self):
-        stored_api_key = "a" * 40
-        self.env.company.write(
-            {
-                "envia_oauth_connected": True,
-                "envia_integration_api_key": stored_api_key,
-            }
-        )
-        action = self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()
-        wizard = self.env["envia.plugin.connect.wizard"].browse(action["res_id"])
-        self.assertEqual(wizard.state, "success")
-        self.assertEqual(wizard.api_key, stored_api_key)
-
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.get")
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.post")
-    def test_open_wizard_fetches_plugin_version_when_already_linked(self, mock_post, mock_get):
+    def test_create_connected_wizard_fetches_plugin_version(self, mock_post, mock_get):
         _mock_oauth_success(mock_get, mock_post, plugin_version="2.5.0")
         self.env.company.write(
             {
@@ -327,12 +353,10 @@ class TestEnviaPluginConnectWizard(TransactionCase):
                 "envia_integration_api_key": False,
             }
         )
-        action = self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()
-        wizard = self.env["envia.plugin.connect.wizard"].browse(action["res_id"])
+        wizard = self.env["envia.plugin.connect.wizard"]._create_connected_wizard(self.env.company)
         self.assertEqual(wizard.state, "success")
         self.assertEqual(wizard.plugin_version, "2.5.0")
         self.assertEqual(self.env.company.envia_plugin_version, "2.5.0")
-        self.assertFalse(wizard.api_key)
 
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.get")
     @patch("odoo.addons.envia.services.envia_oauth_client.requests.post")
@@ -432,11 +456,11 @@ class TestEnviaPluginConnectWizard(TransactionCase):
         self.assertEqual(action["res_model"], "envia.plugin.connect.wizard")
         self.assertEqual(action["target"], "current")
 
-    def test_wizard_redirects_to_quotes_when_api_token_is_configured(self):
+    def test_wizard_redirects_to_settings_when_api_token_is_configured(self):
         wizard = self.env["envia.plugin.connect.wizard"].create_wizard_for_company(self.env.company)
         self._configure_shipping_api()
         action = wizard.action_redirect_if_configured()
-        self.assertEqual(action["res_model"], "envia.quote.onboarding.wizard")
+        self.assertEqual(action["res_model"], "res.config.settings")
 
     def test_wizard_stays_on_welcome_when_api_token_is_missing(self):
         self._reset_shipping_config()
@@ -480,21 +504,21 @@ class TestEnviaPluginConnectWizard(TransactionCase):
             }
         )
         action = self.env["envia.plugin.connect.wizard"].action_envia_app_entry()
-        self.assertEqual(action["res_model"], "envia.quote.onboarding.wizard")
+        self.assertEqual(action["res_model"], "res.config.settings")
         self.assertEqual(self.env.company.envia_api_token, "envia-shipping-token-from-oauth")
 
-    def test_app_entry_falls_back_to_quotes(self):
+    def test_app_entry_falls_back_to_settings(self):
         self._configure_shipping_api()
         self.env.company.envia_quote_onboarding_pending = False
         action = self.env["envia.plugin.connect.wizard"].action_envia_app_entry()
-        self.assertEqual(action["res_model"], "envia.quote")
+        self.assertEqual(action["res_model"], "res.config.settings")
 
     def test_app_entry_skips_welcome_when_api_token_is_configured(self):
         self.env["ir.config_parameter"].sudo().set_param(PENDING_SETUP_PARAM, str(self.env.company.id))
         self._configure_shipping_api()
         self.env.company.envia_quote_onboarding_pending = False
         action = self.env["envia.plugin.connect.wizard"].action_envia_app_entry()
-        self.assertEqual(action["res_model"], "envia.quote")
+        self.assertEqual(action["res_model"], "res.config.settings")
         self.assertFalse(
             self.env["ir.config_parameter"].sudo().get_param(PENDING_SETUP_PARAM)
         )
@@ -528,7 +552,7 @@ class TestEnviaPluginConnectWizard(TransactionCase):
         self.assertEqual(action["target"], "current")
 
     def test_settings_connect_opens_modal_wizard(self):
-        self.env.company.write({"envia_oauth_connected": False})
+        self._reset_shipping_config()
         action = self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()
         self.assertEqual(action["type"], "ir.actions.act_window")
         self.assertEqual(action["target"], "new")
@@ -536,8 +560,34 @@ class TestEnviaPluginConnectWizard(TransactionCase):
     def test_go_to_quotes_action(self):
         action = self.env["envia.plugin.connect.wizard"].create_wizard_for_company(
             self.env.company
-        ).action_go_to_quotes()
-        self.assertEqual(action["res_model"], "envia.quote.onboarding.wizard")
+        ).action_go_to_plugin_settings()
+        self.assertEqual(action["res_model"], "res.config.settings")
+
+    def test_settings_refresh_token_requires_connection(self):
+        self.env.company.write({"envia_oauth_connected": False, "envia_api_token": False})
+        settings = self.env["res.config.settings"].create({})
+        action = settings.action_envia_refresh_integration_token()
+        self.assertEqual(action["type"], "ir.actions.act_window")
+        self.assertEqual(action["res_model"], "envia.plugin.connect.wizard")
+
+    @patch("odoo.addons.envia.services.envia_oauth_client.requests.get")
+    @patch("odoo.addons.envia.services.envia_oauth_client.requests.post")
+    def test_settings_refresh_token_opens_envia_integration_wizard(self, mock_post, mock_get):
+        _mock_oauth_success(mock_get, mock_post, plugin_version="2.5.0")
+        self.env.company.write(
+            {
+                "envia_oauth_connected": True,
+                "envia_integration_api_key": "stored-integration-api-key-12345678901234567890",
+            }
+        )
+        settings = self.env["res.config.settings"].create({})
+        action = settings.action_envia_refresh_integration_token()
+        self.assertEqual(action["type"], "ir.actions.act_window")
+        self.assertEqual(action["res_model"], "envia.plugin.connect.wizard")
+        self.assertEqual(action["target"], "new")
+        wizard = self.env["envia.plugin.connect.wizard"].browse(action["res_id"])
+        self.assertEqual(wizard.state, "waiting_external")
+        self.assertTrue(wizard.external_popup_url)
 
     def test_post_init_hook_queues_pending_setup(self):
         from odoo.addons.envia.hooks import post_init_hook

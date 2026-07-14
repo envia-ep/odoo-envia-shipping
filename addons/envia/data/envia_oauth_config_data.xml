@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Default Envia endpoints and environment. Override via ENVIA_* env vars (dev) or
+     Settings > Envia (runtime). Replace OAuth URLs with production client credentials before release. -->
 <odoo noupdate="1">
+    <record id="config_envia_environment" model="ir.config_parameter">
+        <field name="key">envia.environment</field>
+        <field name="value">sandbox</field>
+    </record>
+
     <record id="config_envia_oauth_integration_url" model="ir.config_parameter">
         <field name="key">envia.oauth_integration_url</field>
         <field name="value">https://oauth-deve.herokuapp.com/oauth/11GGRQY2At8E05EGtLeLO1IZzvpvjMmi/integration/odoo</field>

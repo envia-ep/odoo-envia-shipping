@@ -58,7 +58,7 @@ class OnboardingOnboardingStep(models.Model):
             )
         if not order:
             return self.action_open_step_envia_demo_order()
-        return order.action_open_envia_quote_wizard()
+        return order.action_open_envia_delivery_wizard()
 
     @api.model
     def action_open_step_envia_create_label(self):

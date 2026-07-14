@@ -27,7 +27,7 @@
 
         <record id="onboarding_onboarding_step_get_rates" model="onboarding.onboarding.step">
             <field name="title">Get shipping rates</field>
-            <field name="description">Click Quote Shipment on the order to compare carriers.</field>
+            <field name="description">Use Add shipping on the demo order to compare carriers.</field>
             <field name="button_text">Get rates</field>
             <field name="done_text">Rates received!</field>
             <field name="panel_step_open_action_name">action_open_step_envia_get_rates</field>

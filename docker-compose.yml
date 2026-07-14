@@ -1,13 +1,21 @@
-# Envia OAuth / Eshop endpoints — single switch point for the whole stack.
+# Envia environment — single switch point for the whole stack.
 # Active profile: change the merge anchor in odoo.environment (dev or prod).
-x-envia-oauth-dev: &envia-oauth-dev
+x-envia-dev: &envia-dev
+  ENVIA_ENVIRONMENT: sandbox
+  ENVIA_API_BASE_URL: https://api-test.envia.com
+  ENVIA_QUERIES_BASE_URL: https://queries-test.envia.com
+  ENVIA_CHECKOUT_PATH: v2/checkout/odoo/{shop_id}
   ENVIA_OAUTH_INTEGRATION_URL: https://oauth-deve.herokuapp.com/oauth/11GGRQY2At8E05EGtLeLO1IZzvpvjMmi/integration/odoo
   ENVIA_OAUTH_POPUP_URL: https://oauth-deve.herokuapp.com/j4CVuDzGDiA2sxu0YYOYndiE4XkonsFb?ecommerce=odoo
   ENVIA_ESHOP_TEST_URL: https://eshop-deve.herokuapp.com/api/v2/test
   ENVIA_ESHOP_ACCESSES_ME_URL: https://eshop-deve.herokuapp.com/accesses/me
 
-x-envia-oauth-prod: &envia-oauth-prod
+x-envia-prod: &envia-prod
   # Replace client/popup tokens with production values from Envia.com before use.
+  ENVIA_ENVIRONMENT: production
+  ENVIA_API_BASE_URL: https://api.envia.com
+  ENVIA_QUERIES_BASE_URL: https://queries.envia.com
+  ENVIA_CHECKOUT_PATH: v2/checkout/odoo/{shop_id}
   ENVIA_OAUTH_INTEGRATION_URL: https://oauth.herokuapp.com/oauth/REPLACE_PROD_CLIENT_ID/integration/odoo
   ENVIA_OAUTH_POPUP_URL: https://oauth.herokuapp.com/REPLACE_PROD_POPUP_TOKEN?ecommerce=odoo
   ENVIA_ESHOP_TEST_URL: https://eshop.herokuapp.com/api/v2/test
@@ -39,8 +47,8 @@ services:
       HOST: db
       USER: odoo
       PASSWORD: odoo
-      <<: *envia-oauth-dev
-      # <<: *envia-oauth-prod
+      <<: *envia-dev
+      # <<: *envia-prod
     restart: unless-stopped
 
 volumes:

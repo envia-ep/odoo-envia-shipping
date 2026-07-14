@@ -121,3 +121,32 @@ class EnviaIntegrationHttpController(http.Controller):
             status=status_code,
             headers=[("Content-Type", "text/xml; charset=utf-8")],
         )
+
+    @http.route(
+        "/xmlrpc/2/object",
+        type="http",
+        auth="none",
+        methods=["POST"],
+        csrf=False,
+        save_session=False,
+    )
+    def xmlrpc_object_integration_proxy(self, **kwargs):
+        """Envia.com calls execute_kw on /xmlrpc/2/object without a selected database."""
+        try:
+            from odoo.addons.envia.services.envia_integration_callback import (
+                handle_envia_xmlrpc_object_request,
+            )
+        except ImportError:
+            _logger.error("Envia module is not on the addons path.")
+            return request.make_response(
+                "Envia module not available",
+                status=503,
+                headers=[("Content-Type", "text/plain")],
+            )
+        raw_body = request.httprequest.data or b""
+        status_code, payload = handle_envia_xmlrpc_object_request(raw_body)
+        return request.make_response(
+            payload,
+            status=status_code,
+            headers=[("Content-Type", "text/xml; charset=utf-8")],
+        )

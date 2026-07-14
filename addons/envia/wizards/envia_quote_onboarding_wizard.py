@@ -14,10 +14,10 @@ class EnviaQuoteOnboardingWizard(models.TransientModel):
     )
     is_sandbox = fields.Boolean(compute="_compute_is_sandbox")
 
-    @api.depends("company_id.envia_environment")
+    @api.depends("company_id", "company_id.envia_environment")
     def _compute_is_sandbox(self) -> None:
         for wizard in self:
-            wizard.is_sandbox = wizard.company_id.envia_environment == "sandbox"
+            wizard.is_sandbox = wizard.company_id._envia_is_sandbox()
 
     def _dismiss(self) -> None:
         self.ensure_one()
@@ -33,19 +33,10 @@ class EnviaQuoteOnboardingWizard(models.TransientModel):
     def action_go_to_quotes(self):
         self.ensure_one()
         self._dismiss()
-        return self.env["envia.quote.wizard"].action_open_quote_wizard()
+        return self.env["ir.actions.act_window"]._for_xml_id("envia.action_envia_config_settings")
 
     @api.model
     def get_entry_action(self):
         company = self.env.company
-        if not company.envia_quote_onboarding_pending:
-            return self.env.ref("envia.action_envia_quote").read()[0]
-        wizard = self.create({"company_id": company.id})
-        return {
-            "type": "ir.actions.act_window",
-            "name": _("How to Quote with Envia"),
-            "res_model": self._name,
-            "res_id": wizard.id,
-            "view_mode": "form",
-            "target": "current",
-        }
+        company.envia_quote_onboarding_pending = False
+        return self.env["ir.actions.act_window"]._for_xml_id("envia.action_envia_config_settings")

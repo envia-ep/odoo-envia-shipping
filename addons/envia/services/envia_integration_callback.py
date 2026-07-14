@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 from odoo import _
 
-from .envia_plugin_setup import get_pending_setup_company_id, lookup_integration_database
+from .envia_plugin_setup import get_pending_setup_company_id, lookup_integration_database, resolve_integration_api_key_user
 
 CALLBACK_ROUTE = "/envia/integration/callback"
 CONNECT_ROUTE = "/envia/integration/connect"
@@ -21,6 +21,33 @@ def _allowed_integration_databases() -> list[str]:
     import odoo.service.db as db_service
 
     return http.db_filter(db_service.list_dbs(force=True))
+
+
+def _database_is_accessible(database_name: str) -> bool:
+    """True when database_name can be opened (HTTP filter or direct Registry)."""
+    import odoo.http as http
+    from odoo.modules.registry import Registry
+
+    database_name = (database_name or "").strip()
+    if not database_name:
+        return False
+    try:
+        if database_name in http.db_filter([database_name]):
+            return True
+    except Exception:
+        pass
+    try:
+        Registry(database_name)
+        return True
+    except Exception:
+        return False
+
+
+def _xmlrpc_response_body(payload) -> bytes:
+    import xmlrpc.client
+
+    body = xmlrpc.client.dumps(payload, methodresponse=True, allow_none=True)
+    return body.encode("utf-8") if isinstance(body, str) else body
 
 
 def resolve_connect_database(api_key: str, db_query: str | None = None) -> str:
@@ -76,7 +103,7 @@ class EnviaIntegrationCallbackPayload:
     status: str
     hash: str  # Envia shipping API token (api.envia.com Bearer)
     shop: str
-    company: int
+    company: int  # Envia.com company id (stored on res.company.envia_company_id)
     user: int
     api_key: str  # Odoo API key generated when connecting with Envia.com
     database: str | None = None  # Optional; resolved from the request when omitted
@@ -420,6 +447,8 @@ def authenticate_integration_callback(env, api_key: str) -> int:
             http_status=401,
         ) from error
     if not user_id:
+        user_id = resolve_integration_api_key_user(env.cr.dbname, api_key)
+    if not user_id:
         raise EnviaIntegrationCallbackError(
             "invalid_api_key",
             _("Integration callback apiKey is invalid or expired."),
@@ -443,8 +472,11 @@ def validate_envia_store_credentials(
     api_key = (api_key or "").strip()
     if not database_name or not api_key:
         return None
-    if database_name not in http.db_filter([database_name]):
+    if not _database_is_accessible(database_name):
         return None
+    cached_user_id = resolve_integration_api_key_user(database_name, api_key, email)
+    if cached_user_id:
+        return cached_user_id
     try:
         registry = Registry(database_name)
         with registry.cursor() as cr:
@@ -519,10 +551,8 @@ def handle_envia_xmlrpc_common_request(
         body = raw_body if isinstance(raw_body, bytes) else (raw_body or "").encode("utf-8")
         params, method_name = xmlrpc.client.loads(body)
     except Exception:
-        return 400, xmlrpc.client.dumps(
+        return 400, _xmlrpc_response_body(
             xmlrpc.client.Fault(1, "Invalid XML-RPC payload"),
-            methodresponse=True,
-            allow_none=True,
         )
 
     if method_name == "version":
@@ -534,55 +564,93 @@ def handle_envia_xmlrpc_common_request(
             "server_serie": release.serie,
             "protocol_version": 1,
         }
-        return 200, xmlrpc.client.dumps((version_info,), methodresponse=True, allow_none=True)
+        return 200, _xmlrpc_response_body((version_info,))
 
     if method_name == "authenticate":
         if len(params) < 3:
-            return 200, xmlrpc.client.dumps((False,), methodresponse=True, allow_none=True)
+            return 200, _xmlrpc_response_body((False,))
         database_name = (db_query or params[0] or "").strip()
         email = str(params[1] or "").strip()
         api_key = str(params[2] or "").strip()
         user_id = validate_envia_store_credentials(database_name, api_key, email)
-        return 200, xmlrpc.client.dumps((user_id or False,), methodresponse=True, allow_none=True)
+        return 200, _xmlrpc_response_body((user_id or False,))
 
-    return 404, xmlrpc.client.dumps(
+    return 404, _xmlrpc_response_body(
         xmlrpc.client.Fault(404, f"Method {method_name} not found"),
-        methodresponse=True,
-        allow_none=True,
     )
 
 
+def _odoo_xmlrpc_dumps(value) -> str:
+    """Use Odoo's XML-RPC marshaller (handles date, datetime, bytes, etc.)."""
+    from odoo.addons.rpc.controllers.xmlrpc import dumps
+
+    return dumps(value)
+
+
+def handle_envia_xmlrpc_object_request(raw_body: bytes | str) -> tuple[int, str]:
+    """Proxy Envia.com XML-RPC object calls on POST /xmlrpc/2/object without a selected database."""
+    import sys
+    import traceback
+    import xmlrpc.client
+
+    import odoo.exceptions
+    from odoo.http import dispatch_rpc
+
+    try:
+        body = raw_body if isinstance(raw_body, bytes) else (raw_body or "").encode("utf-8")
+        params, method_name = xmlrpc.client.loads(body)
+    except Exception:
+        return 400, _odoo_xmlrpc_dumps(xmlrpc.client.Fault(1, "Invalid XML-RPC payload"))
+
+    try:
+        result = dispatch_rpc("object", method_name, params)
+        return 200, _odoo_xmlrpc_dumps((result,))
+    except odoo.exceptions.AccessDenied as error:
+        fault = xmlrpc.client.Fault(3, str(error))
+    except odoo.exceptions.AccessError as error:
+        fault = xmlrpc.client.Fault(4, str(error))
+    except odoo.exceptions.UserError as error:
+        fault = xmlrpc.client.Fault(2, str(error))
+    except Exception:
+        formatted_info = "".join(traceback.format_exception(*sys.exc_info()))
+        fault = xmlrpc.client.Fault(1, formatted_info)
+    return 200, _odoo_xmlrpc_dumps(fault)
+
+
 def _resolve_integration_callback_company(env, payload: EnviaIntegrationCallbackPayload):
-    """Resolve the Odoo company from DB state instead of Envia's company id."""
-    company_model = env["res.company"]
-    allowed_company_ids = env.user.company_ids.ids
+    """Resolve the Odoo company for an authenticated integration callback."""
+    # ponytail: sudo() — envia_integration_api_key is group_system-only; caller is already API-key auth
+    company_model = env["res.company"].sudo()
+    user = env.user.sudo()
 
     pending_company_id = get_pending_setup_company_id(env)
     if pending_company_id:
         company = company_model.browse(pending_company_id)
-        if company.exists() and company.id in allowed_company_ids:
+        if company.exists():
             return company
 
     company = company_model.search(
         [("envia_integration_api_key", "=", payload.api_key)],
         limit=1,
     )
-    if company and company.id in allowed_company_ids:
+    if company:
         return company
 
     if payload.shop:
         company = company_model.search([("envia_shop_id", "=", payload.shop)], limit=1)
-        if company and company.id in allowed_company_ids:
+        if company:
             return company
 
-    company = company_model.browse(payload.company)
-    if company.exists() and company.id in allowed_company_ids:
-        return company
+    envia_company_id = str(payload.company).strip() if payload.company is not None else ""
+    if envia_company_id:
+        company = company_model.search([("envia_company_id", "=", envia_company_id)], limit=1)
+        if company:
+            return company
 
-    if env.user.company_id and env.user.company_id.id in allowed_company_ids:
-        return env.user.company_id
+    if user.company_id:
+        return user.company_id
 
-    return company_model.browse()
+    return company_model.search([], limit=1)
 
 
 def apply_integration_callback(
@@ -630,6 +698,7 @@ def apply_integration_callback(
         return company._envia_apply_integration_callback_success(
             hash_token=payload.hash,
             shop_id=payload.shop,
+            envia_company_id=payload.company,
             api_key=payload.api_key,
         )
 

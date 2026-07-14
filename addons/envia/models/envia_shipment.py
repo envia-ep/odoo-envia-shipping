@@ -6,6 +6,7 @@ from odoo.exceptions import UserError
 
 from ..services.dto import CreateShipmentRequest, TrackRequest
 from ..services.envia_client import EnviaClient
+from ..services.envia_official_adapter import EnviaOfficialAdapter
 from ..services.payload_mapper import PayloadMapper, get_envia_adapter
 
 _logger = logging.getLogger(__name__)
@@ -136,7 +137,8 @@ class EnviaShipment(models.Model):
         self.ensure_one()
         if not label_url:
             return
-        client = EnviaClient(self.company_id._envia_get_base_url(), self.company_id.envia_api_token or "")
+        token = self.company_id._envia_get_shipping_api_token()
+        client = EnviaClient(self.company_id._envia_get_base_url(), token or "")
         content = client.get_binary(label_url)
         attachment = self.env["ir.attachment"].create(
             {
@@ -152,13 +154,18 @@ class EnviaShipment(models.Model):
 
     @api.model
     def create_from_api_response(self, response, quote, picking=None):
+        currency = False
+        if response.pricing_currency:
+            currency = self.env["res.currency"].search(
+                [("name", "=", response.pricing_currency)], limit=1
+            )
         shipment = self.create(
             {
                 "quote_id": quote.id,
                 "selected_service_id": quote.selected_service_id.id,
                 "sale_order_id": quote.sale_order_id.id,
                 "picking_id": picking.id if picking else quote.picking_id.id,
-                "external_shipment_id": str(response.shipment_id),
+                "external_shipment_id": str(response.shipment_id) if response.shipment_id else False,
                 "tracking_number": response.tracking_number,
                 "carrier": response.carrier,
                 "carrier_name": response.carrier_name,
@@ -167,6 +174,7 @@ class EnviaShipment(models.Model):
                 "status_description": response.status_description,
                 "label_url": response.label_url,
                 "pricing_total": response.pricing_total,
+                "pricing_currency_id": currency.id if currency else False,
                 "state": "created",
             }
         )
@@ -196,19 +204,16 @@ class EnviaShipment(models.Model):
 
     @api.model
     def action_create_shipment_from_quote(self, quote):
-        quote._check_quote_valid()
+        quote._validate_label_generation()
         selected = quote.selected_service_id
-        if not selected:
-            raise UserError(_("Select a carrier service before creating the shipment."))
         sale_order = quote.sale_order_id
         picking = quote.picking_id or (sale_order.picking_ids[:1] if sale_order else False)
-        origin_partner, destination_partner = quote._get_shipment_partners()
         mapper = PayloadMapper()
         request = CreateShipmentRequest(
             quote_id=quote.quote_id,
             service_id=selected.service_id,
-            origin_contact=mapper.partner_to_contact(origin_partner),
-            destination_contact=mapper.partner_to_contact(destination_partner),
+            origin_contact=quote._build_shipment_contact("origin"),
+            destination_contact=quote._build_shipment_contact("destination"),
             items=mapper.sale_lines_to_items(sale_order) if sale_order else [],
             order_reference=sale_order.name if sale_order else quote.name,
             print_format=quote.company_id.envia_label_format,
@@ -216,11 +221,23 @@ class EnviaShipment(models.Model):
             carrier=selected.carrier,
             service_name=selected.service_name,
             package_weight=quote.weight,
-            package_length=quote.length,
-            package_width=quote.width,
-            package_height=quote.height,
             package_content=quote.content,
         )
+        expected_drop_off = EnviaOfficialAdapter._expected_drop_off(
+            request.origin_contact,
+            request.destination_contact,
+        )
+        if (
+            expected_drop_off is not None
+            and selected.drop_off
+            and selected.drop_off != expected_drop_off
+        ):
+            raise UserError(
+                _(
+                    "The selected rate is not valid for this pickup route. "
+                    "Reload branches and generate the label again."
+                )
+            )
         adapter = self._get_envia_adapter(quote.company_id)
         response = adapter.create_shipment(request)
         return self.create_from_api_response(response, quote, picking=picking)

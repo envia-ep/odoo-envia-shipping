@@ -40,3 +40,15 @@ class TestEnviaGeocodesClient(TransactionCase):
         wizard._apply_geocode("destination", force=True)
         self.assertEqual(wizard.destination_city, "Ciudad de México")
         self.assertEqual(wizard.destination_state_id, expected_state)
+
+    @patch("odoo.addons.envia.services.envia_geocodes_client.requests.get")
+    def test_resolve_state_from_postal_code_maps_mx_cmx(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: _MX_GEOCODE)
+        mexico = self.env.ref("base.mx")
+        expected_state = self.env.ref("base.state_mx_df")
+        state = EnviaGeocodesClient().resolve_state_from_postal_code(
+            self.env,
+            mexico,
+            "06500",
+        )
+        self.assertEqual(state, expected_state)

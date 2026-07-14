@@ -20,5 +20,8 @@ class TestEnviaQuoteOnboarding(TransactionCase):
         self.assertEqual(action.get("res_model"), "sale.order")
 
         action = self.env["onboarding.onboarding.step"].action_open_step_envia_get_rates()
-        self.assertEqual(action.get("res_model"), "envia.quote.wizard")
-        self.assertEqual(action.get("views"), [(False, "form")])
+        self.assertEqual(action.get("res_model"), "choose.delivery.carrier")
+        self.assertEqual(action.get("target"), "new")
+        carrier = self.env.ref("envia.delivery_carrier_envia")
+        self.assertEqual(action["context"]["default_carrier_id"], carrier.id)
+        self.assertTrue(action["context"]["envia_force_delivery_carrier"])

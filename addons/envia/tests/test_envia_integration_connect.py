@@ -25,9 +25,15 @@ class TestEnviaIntegrationConnect(TransactionCase):
             "status": "success",
             "hash": "envia-shipping-api-token-xyz",
             "shop": "114865",
-            "company": self.env.company.id,
+            "company": 8842,
             "user": self.test_user.id,
+            "apiKey": self.credentials["api_key"],
         }
+        self.env.company.sudo().write({"envia_integration_api_key": False})
+        self.env["ir.config_parameter"].sudo().set_param(
+            "envia.pending_plugin_setup_company_id",
+            "",
+        )
         result = EnviaIntegrationController._process_integration_connect(
             self.env.cr.dbname,
             payload,
@@ -37,6 +43,7 @@ class TestEnviaIntegrationConnect(TransactionCase):
         company = self.env.company
         self.assertEqual(company.envia_api_token, "envia-shipping-api-token-xyz")
         self.assertEqual(company.envia_shop_id, "114865")
+        self.assertEqual(company.envia_company_id, "8842")
         self.assertTrue(company.envia_oauth_connected)
 
     def test_resolve_connect_database_finds_database_from_api_key(self):

@@ -2,6 +2,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from ..services.envia_client import EnviaClient
+from ..services.envia_config import get_envia_environment_from_config
 from ..services.envia_integration_callback import build_callback_url, get_integration_database_name
 from ..services.envia_oauth_client import EnviaOauthClient
 from ..services.envia_plugin_setup import (
@@ -20,9 +21,19 @@ class ResConfigSettings(models.TransientModel):
     envia_base_url = fields.Char(related="company_id.envia_base_url", readonly=False)
     envia_default_carriers = fields.Char(related="company_id.envia_default_carriers", readonly=True)
     envia_default_carrier_ids = fields.Many2many(related="company_id.envia_default_carrier_ids", readonly=False)
-    envia_default_origin_partner_id = fields.Many2one(
-        related="company_id.envia_default_origin_partner_id",
+    envia_default_origin_warehouse_id = fields.Many2one(
+        related="company_id.envia_default_origin_warehouse_id",
         readonly=False,
+    )
+    envia_default_origin_partner_display = fields.Char(
+        string="Linked contact",
+        compute="_compute_envia_default_origin_display",
+        readonly=True,
+    )
+    envia_default_origin_address_preview = fields.Char(
+        string="Ship-from address",
+        compute="_compute_envia_default_origin_display",
+        readonly=True,
     )
     envia_enable_branches = fields.Boolean(
         related="company_id.envia_enable_branches",
@@ -114,6 +125,35 @@ class ResConfigSettings(models.TransientModel):
         compute="_compute_envia_integration_database_name",
         readonly=True,
     )
+    envia_shop_id_display = fields.Char(
+        compute="_compute_envia_integration_identity_display",
+        readonly=True,
+    )
+    envia_company_id_display = fields.Char(
+        string="Company ID",
+        compute="_compute_envia_integration_identity_display",
+        readonly=True,
+    )
+    envia_odoo_version_display = fields.Char(
+        string="Odoo Version",
+        compute="_compute_envia_integration_identity_display",
+        readonly=True,
+    )
+
+    @api.depends(
+        "envia_default_origin_warehouse_id",
+        "envia_default_origin_warehouse_id.partner_id",
+        "company_id.envia_default_origin_partner_id",
+        "company_id.partner_id",
+    )
+    def _compute_envia_default_origin_display(self) -> None:
+        company_model = self.env["res.company"]
+        for record in self:
+            partner = record.company_id._envia_get_default_origin_partner()
+            record.envia_default_origin_partner_display = partner.display_name if partner else False
+            record.envia_default_origin_address_preview = company_model._envia_format_address_preview(
+                partner
+            )
 
     def _compute_envia_module_version_display(self) -> None:
         module_version = get_envia_module_version(self.env)
@@ -141,6 +181,17 @@ class ResConfigSettings(models.TransientModel):
         for record in self:
             record.envia_integration_database_name = get_integration_database_name(record.env)
 
+    @api.depends("company_id", "company_id.envia_shop_id", "company_id.envia_company_id")
+    def _compute_envia_integration_identity_display(self) -> None:
+        import odoo.release as release
+
+        odoo_version = release.version
+        for record in self:
+            company = record.company_id
+            record.envia_company_id_display = (company.envia_company_id or "").strip() or "—"
+            record.envia_shop_id_display = (company.envia_shop_id or "").strip() or "—"
+            record.envia_odoo_version_display = odoo_version
+
     @api.depends(
         "envia_environment",
         "envia_api_token",
@@ -151,8 +202,12 @@ class ResConfigSettings(models.TransientModel):
         for record in self:
             company = record.company_id
             record.envia_effective_base_url = company._envia_get_base_url() if company else ""
-            record.envia_is_sandbox = record.envia_environment == "sandbox"
-            record.envia_is_production = record.envia_environment == "production"
+            if company:
+                record.envia_is_sandbox = company._envia_is_sandbox()
+            else:
+                config_env = get_envia_environment_from_config(record.env)
+                record.envia_is_sandbox = config_env == "sandbox" if config_env else False
+            record.envia_is_production = not record.envia_is_sandbox
             record.envia_has_api_token = record.company_id._envia_is_shipping_api_configured()
 
     @api.depends(

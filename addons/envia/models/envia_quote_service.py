@@ -8,6 +8,7 @@ class EnviaQuoteService(models.Model):
 
     quote_id = fields.Many2one("envia.quote", required=True, ondelete="cascade")
     service_id = fields.Char(string="Service ID", required=True)
+    envia_service_id = fields.Integer(string="Envia Service ID")
     carrier = fields.Char(required=True)
     carrier_name = fields.Char()
     service_name = fields.Char(required=True)
@@ -18,6 +19,7 @@ class EnviaQuoteService(models.Model):
     )
     currency_name = fields.Char()
     estimated_delivery_days = fields.Integer()
+    drop_off = fields.Integer()
     max_weight = fields.Float()
     restrictions = fields.Text()
     additional_services_available = fields.Text()
@@ -25,7 +27,16 @@ class EnviaQuoteService(models.Model):
 
     def action_select_service(self):
         self.ensure_one()
-        self.quote_id.service_ids.write({"is_selected": False})
+        quote = self.quote_id
+        quote.service_ids.write({"is_selected": False})
         self.is_selected = True
-        self.quote_id.write({"selected_service_id": self.id, "state": "quoted"})
+        quote.write({"selected_service_id": self.id})
+        quote._sync_envia_service_id_targets()
+        quote.write(
+            {
+                "state": "quoted"
+                if quote._branch_fields_complete() and quote._route_matches_selected_service()
+                else "draft"
+            }
+        )
         return True

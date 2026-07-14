@@ -11,14 +11,18 @@ PENDING_SETUP_PARAM = "envia.pending_plugin_setup_company_id"
 ENVIA_MODULE_NAME = "envia"
 # ponytail: in-process map api_key -> env.cr.dbname from Connect; survives until Odoo restart
 _integration_database_by_api_key: dict[str, str] = {}
+# ponytail: nodb /jsonrpc validation before the key row is committed (tests + Connect flow)
+_integration_api_key_users: dict[str, tuple[int, str]] = {}
 
 
-def bind_integration_database(env, api_key: str) -> None:
+def bind_integration_database(env, api_key: str, user=None) -> None:
     """Remember the database active when the user clicked Connect with Envia.com."""
     api_key = (api_key or "").strip()
     if not api_key:
         return
+    user = user or env.user
     _integration_database_by_api_key[api_key] = env.cr.dbname
+    _integration_api_key_users[api_key] = (user.id, user.login or "")
     env["ir.config_parameter"].sudo().set_param(
         f"envia.integration_db.{api_key}",
         env.cr.dbname,
@@ -112,7 +116,7 @@ def generate_integration_credentials(
             expiration_date=expiration_date,
         )
     )
-    bind_integration_database(env, api_key)
+    bind_integration_database(env, api_key, user=user)
     base_url = env["ir.config_parameter"].sudo().get_param("web.base.url", "").rstrip("/")
     return {
         "company_id": company.id,
@@ -149,3 +153,20 @@ def pop_pending_setup_company_id(env):
         return None
     clear_pending_setup(env)
     return company_id
+
+
+def resolve_integration_api_key_user(
+    database_name: str,
+    api_key: str,
+    email: str | None = None,
+) -> int | None:
+    """Validate API key from the in-process Connect cache (nodb / pre-commit)."""
+    api_key = (api_key or "").strip()
+    database_name = (database_name or "").strip()
+    cached = _integration_api_key_users.get(api_key)
+    if not cached or _integration_database_by_api_key.get(api_key) != database_name:
+        return None
+    user_id, login = cached
+    if email and login != str(email).strip():
+        return None
+    return user_id

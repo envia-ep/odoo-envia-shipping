@@ -37,9 +37,10 @@ class EnviaClient:
             "Content-Type": "application/json",
         }
 
-    def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any] | list[Any]:
         url = f"{self.base_url}{path.lstrip('/')}"
         _logger.info("Envia API POST %s", url)
+        _logger.info("Envia API POST %s payload=%s", url, json.dumps(payload, ensure_ascii=False))
         try:
             response = requests.post(
                 url,
@@ -79,8 +80,8 @@ class EnviaClient:
             ) from error
 
         if response.status_code >= 400:
-            message = body.get("message") or body.get("error") or response.text
-            error_code = body.get("error", "")
+            message = self._response_error_message(body, response)
+            error_code = body.get("error", "") if isinstance(body, dict) else ""
             if error_code == "INVALID_POSTAL_CODE":
                 raise UserError(_("Invalid postal code: %s") % message)
             if error_code == "NO_RATES_AVAILABLE":
@@ -92,7 +93,18 @@ class EnviaClient:
                 "message": message,
             })
 
+        _logger.info("Envia API POST %s response=%s", url, json.dumps(body, ensure_ascii=False))
         return body
+
+    @staticmethod
+    def _response_error_message(body, response) -> str:
+        if isinstance(body, dict):
+            return body.get("message") or body.get("error") or response.text
+        if isinstance(body, list) and body:
+            first = body[0]
+            if isinstance(first, dict):
+                return first.get("message") or first.get("error") or response.text
+        return response.text
 
     def get(
         self,
@@ -132,7 +144,7 @@ class EnviaClient:
             ) from error
 
         if response.status_code >= 400:
-            message = body.get("message") or body.get("error") or response.text
+            message = self._response_error_message(body, response)
             raise EnviaApiError(_("Envia API error (%(status)s): %(message)s") % {
                 "status": response.status_code,
                 "message": message,

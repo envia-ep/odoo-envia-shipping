@@ -17,4 +17,16 @@
         <field name="implied_ids" eval="[(4, ref('group_envia_user'))]"/>
         <field name="user_ids" eval="[(4, ref('base.user_admin'))]"/>
     </record>
+
+    <record id="envia_quote_comp_rule" model="ir.rule">
+        <field name="name">Envia Quote: multi-company</field>
+        <field name="model_id" ref="model_envia_quote"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="envia_shipment_comp_rule" model="ir.rule">
+        <field name="name">Envia Shipment: multi-company</field>
+        <field name="model_id" ref="model_envia_shipment"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
 </odoo>

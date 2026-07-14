@@ -1,0 +1,1373 @@
+from unittest.mock import patch
+
+from odoo.exceptions import UserError
+from odoo.addons.envia.services.dto import QuoteResponse, QuoteService
+from odoo.tests import tagged
+from odoo.tests.common import TransactionCase
+
+
+@tagged("post_install", "-at_install")
+class TestEnviaDeliveryCarrier(TransactionCase):
+    def setUp(self):
+        super().setUp()
+        self.env.company.envia_enable_branches = True
+        shipping_product = self.env.ref("envia.product_envia_shipping", raise_if_not_found=False)
+        product_domain = [("sale_ok", "=", True)]
+        if shipping_product:
+            product_domain.append(("id", "!=", shipping_product.id))
+        self.product = self.env["product.product"].search(product_domain, limit=1)
+        if not self.product:
+            self.product = self.env["product.product"].create(
+                {
+                    "name": "QA Merchandise",
+                    "sale_ok": True,
+                    "list_price": 10.0,
+                }
+            )
+        self.carrier = self.env.ref("envia.delivery_carrier_envia")
+        self.partner = self.env.company.partner_id
+        self.order = self.env["sale.order"].create(
+            {
+                "partner_id": self.partner.id,
+                "partner_invoice_id": self.partner.id,
+                "partner_shipping_id": self.partner.id,
+                "order_line": [(0, 0, {"product_id": self.product.id, "product_uom_qty": 1.0})],
+            }
+        )
+
+    def test_delivery_carrier_envia_is_registered(self):
+        self.assertEqual(self.carrier.delivery_type, "envia")
+        self.assertEqual(self.carrier.name, "Envia.com")
+
+    def test_envia_rate_shipment_returns_cheapest_rate(self):
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=150.0,
+                    currency=self.order.currency_id.name,
+                ),
+                QuoteService(
+                    service_id="dhl:1",
+                    carrier="dhl",
+                    carrier_name="DHL",
+                    service_name="Express",
+                    price=99.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        with patch(
+            "odoo.addons.envia.models.delivery_carrier.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            result = self.carrier.envia_rate_shipment(self.order)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["price"], 99.0)
+
+    def test_envia_rate_shipment_surfaces_user_error(self):
+        with patch(
+            "odoo.addons.envia.models.delivery_carrier.get_envia_adapter"
+        ) as get_adapter:
+            from odoo.exceptions import UserError
+
+            get_adapter.side_effect = UserError("Missing API token")
+            result = self.carrier.envia_rate_shipment(self.order)
+        self.assertFalse(result["success"])
+        self.assertIn("Missing API token", result["error_message"])
+
+    def test_choose_delivery_carrier_create_standard_delivery(self):
+        standard_carrier = self.env["delivery.carrier"].create(
+            {
+                "name": "Standard Delivery",
+                "delivery_type": "fixed",
+                "product_id": self.env.ref("delivery.product_product_delivery").id,
+                "fixed_price": 10.0,
+            }
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": standard_carrier.id,
+            }
+        )
+        self.assertFalse(wizard.envia_wizard_id)
+
+    def test_choose_delivery_carrier_creates_envia_wizard_on_open(self):
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": self.carrier.id,
+            }
+        )
+        self.assertTrue(wizard.envia_wizard_id)
+        self.assertEqual(wizard.envia_wizard_id.sale_order_id, self.order)
+        self.assertEqual(
+            wizard.envia_wizard_id.destination_partner_id,
+            self.order.partner_shipping_id,
+        )
+
+    def test_choose_delivery_carrier_syncs_package_weight_to_envia_wizard(self):
+        self.product.weight = 0.10
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": self.carrier.id,
+            }
+        )
+        self.assertEqual(wizard.envia_wizard_id.weight, 0.10)
+
+    def test_choose_delivery_carrier_normalizes_weight_below_minimum(self):
+        self.product.weight = 0.05
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": self.carrier.id,
+            }
+        )
+        self.assertEqual(wizard.envia_wizard_id.weight, 1.0)
+
+    def test_choose_delivery_carrier_update_restores_order_weight_not_saved_quote(self):
+        self.product.weight = 0.10
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "64000",
+                "destination_country": "MX",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 1.0,
+                "content": "General merchandise",
+                "declared_value": 100.0,
+                "currency_id": self.order.currency_id.id,
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "dhl:1",
+                "carrier": "dhl",
+                "carrier_name": "DHL",
+                "service_name": "Economy",
+                "price": 150.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        self.order.set_delivery_line(self.carrier, 150.0)
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": self.carrier.id,
+            }
+        )
+        self.assertEqual(wizard.envia_wizard_id.weight, 0.10)
+
+    def test_choose_delivery_carrier_onchange_without_order_does_not_crash(self):
+        # Selecting Envia.com in the modal fires onchange before order_id is bound.
+        wizard = self.env["choose.delivery.carrier"].new({"carrier_id": self.carrier.id})
+        wizard._onchange_carrier_id()
+        self.assertTrue(wizard.envia_wizard_id)
+        self.assertFalse(wizard.envia_wizard_id.sale_order_id)
+
+    def test_choose_delivery_carrier_get_rate_keeps_user_location_types(self):
+        # Update restores Pickup; user switches to Ship/Ship and Get rate must
+        # not re-apply the saved quote on create.
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "64000",
+                "destination_country": "MX",
+                "destination_location_type": "branch",
+                "destination_branch_code": "MTY01",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "dhl:ocurre",
+                "carrier": "dhl",
+                "carrier_name": "DHL",
+                "service_name": "Economy Ocurre",
+                "price": 281.16,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        self.order.set_delivery_line(self.carrier, 281.16)
+        mx, state = self._mx_state()
+
+        def fake_load(quote_wizard, side, carrier_codes=None):
+            self.env["envia.quote.wizard.branch"].create(
+                {
+                    "wizard_id": quote_wizard.id,
+                    "side": side,
+                    "name": "DHL MTY01",
+                    "branch_code": "MTY01",
+                    "carrier": "dhl",
+                    "zip": "64000",
+                    "city": "Monterrey",
+                    "country_code": "MX",
+                    "state_code": state.code,
+                }
+            )
+
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaQuoteWizard._load_branches",
+            autospec=True,
+            side_effect=fake_load,
+        ), patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes, patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            get_adapter.return_value.quote.return_value = response
+            pending = self.env["choose.delivery.carrier"].new(
+                {"order_id": self.order.id, "carrier_id": self.carrier.id}
+            )
+            pending._onchange_carrier_id()
+            quote_wizard = pending.envia_wizard_id
+            self.assertEqual(quote_wizard.destination_location_type, "branch")
+            self.assertTrue(quote_wizard.is_seeded_from_order)
+            # User switches to Ship / Ship before Get rate (keep a real record ref).
+            quote_wizard.write(
+                {
+                    "origin_location_type": "address",
+                    "destination_location_type": "address",
+                    "origin_partner_id": self.partner.id,
+                    "destination_partner_id": self.partner.id,
+                    "origin_country_id": mx.id,
+                    "destination_country_id": mx.id,
+                    "origin_state_id": state.id,
+                    "destination_state_id": state.id,
+                    "origin_street": "Origin St",
+                    "destination_street": "Dest St",
+                    "origin_city": "CDMX",
+                    "destination_city": "GDL",
+                    "origin_postal_code": "06600",
+                    "destination_postal_code": "44100",
+                }
+            )
+            quote_wizard.destination_branch_line_ids.unlink()
+            wizard = self.env["choose.delivery.carrier"].create(
+                {
+                    "order_id": self.order.id,
+                    "carrier_id": self.carrier.id,
+                    "envia_wizard_id": quote_wizard.id,
+                }
+            )
+            self.assertEqual(wizard.envia_wizard_id.destination_location_type, "address")
+            self.assertEqual(wizard.envia_wizard_id._get_quote_carriers(), "all")
+            wizard.update_price()
+        self.assertEqual(wizard.envia_wizard_id.destination_location_type, "address")
+        self.assertTrue(wizard.envia_service_line_ids)
+        self.assertEqual(wizard.envia_service_line_ids[:1].carrier, "fedex")
+
+    def test_expected_route_drop_off_from_location_types(self):
+        skip = {
+            "envia_skip_route_carrier_refresh": True,
+            "envia_skip_auto_quote": True,
+            "envia_skip_branch_autoload": True,
+        }
+        wizard = self.env["envia.quote.wizard"].with_context(**skip).create({})
+        self.assertFalse(wizard._expected_route_drop_off())
+        wizard.with_context(**skip).write({"destination_location_type": "branch"})
+        self.assertEqual(wizard._expected_route_drop_off(), 2)
+        wizard.with_context(**skip).write({"origin_location_type": "branch"})
+        self.assertEqual(wizard._expected_route_drop_off(), 3)
+        wizard.with_context(**skip).write({"destination_location_type": "address"})
+        self.assertEqual(wizard._expected_route_drop_off(), 1)
+
+    def test_branch_carrier_codes_use_probed_available_list(self):
+        mx = self.env.ref("base.mx")
+        wizard = self.env["envia.quote.wizard"].create(
+            {
+                "branch_carriers_probed": True,
+                "available_branch_carriers": "dhl,estafeta",
+                "failed_branch_carriers": "estafeta",
+            }
+        )
+        codes = wizard._get_branch_carrier_codes(mx)
+        self.assertIn("dhl", codes)
+        self.assertNotIn("estafeta", codes)
+        self.assertNotIn("ups", codes)
+
+    def test_no_branch_rates_removes_failed_carrier_branches(self):
+        mx, state = self._mx_state()
+        wizard = self.env["envia.quote.wizard"].with_context(
+            envia_skip_branch_autoload=True
+        ).create(
+            {
+                "origin_location_type": "branch",
+                "destination_location_type": "branch",
+                "origin_country_id": mx.id,
+                "destination_country_id": mx.id,
+                "origin_postal_code": "67175",
+                "destination_postal_code": "03100",
+                "origin_state_id": state.id,
+                "destination_state_id": state.id,
+            }
+        )
+        self.env["envia.quote.wizard.branch"].create(
+            [
+                {
+                    "wizard_id": wizard.id,
+                    "side": "origin",
+                    "name": "UPS Origin",
+                    "branch_code": "UPS1",
+                    "carrier": "ups",
+                    "zip": "67175",
+                    "city": "Monterrey",
+                    "country_code": "MX",
+                    "is_selected": True,
+                },
+                {
+                    "wizard_id": wizard.id,
+                    "side": "destination",
+                    "name": "UPS Dest",
+                    "branch_code": "UPS2",
+                    "carrier": "ups",
+                    "zip": "03100",
+                    "city": "CDMX",
+                    "country_code": "MX",
+                    "is_selected": True,
+                },
+                {
+                    "wizard_id": wizard.id,
+                    "side": "origin",
+                    "name": "DHL Origin",
+                    "branch_code": "DHL1",
+                    "carrier": "dhl",
+                    "zip": "67175",
+                    "city": "Monterrey",
+                    "country_code": "MX",
+                },
+            ]
+        )
+        wizard._handle_no_branch_rates()
+        self.assertFalse(wizard.origin_branch_line_ids.filtered(lambda b: b.carrier == "ups"))
+        self.assertFalse(
+            wizard.destination_branch_line_ids.filtered(lambda b: b.carrier == "ups")
+        )
+        self.assertTrue(wizard.origin_branch_line_ids.filtered(lambda b: b.carrier == "dhl"))
+        self.assertIn("ups", wizard.failed_branch_carriers)
+        self.assertTrue(wizard.rates_feedback)
+        self.assertNotIn("ups", wizard._get_branch_carrier_codes(mx))
+
+    def test_select_destination_branch_after_rate_persists_branch_code(self):
+        mx, state = self._mx_state()
+        response = QuoteResponse(
+            quote_id="bb",
+            services=[
+                QuoteService(
+                    service_id="paquetexpress:bb",
+                    envia_service_id=567,
+                    carrier="paquetexpress",
+                    carrier_name="Paquetexpress",
+                    service_name="Branch Branch",
+                    price=13.92,
+                    currency=self.order.currency_id.name,
+                    drop_off=3,
+                ),
+            ],
+        )
+        wizard = self.env["envia.quote.wizard"].with_context(
+            envia_skip_branch_autoload=True,
+            envia_skip_auto_quote=True,
+        ).create(
+            {
+                "sale_order_id": self.order.id,
+                "origin_location_type": "branch",
+                "destination_location_type": "branch",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "origin_street": "Padre Mier",
+                "origin_city": "Monterrey",
+                "origin_postal_code": "64000",
+                "origin_country_id": mx.id,
+                "origin_state_id": state.id,
+                "destination_street": "Insurgentes",
+                "destination_city": "CDMX",
+                "destination_postal_code": "01000",
+                "destination_country_id": mx.id,
+                "destination_state_id": state.id,
+                "weight": 1.0,
+                "content": "Test",
+            }
+        )
+        self.assertFalse(wizard.show_origin_branch_picker)
+        self.assertFalse(wizard.show_destination_branch_picker)
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            with patch.object(type(wizard), "_try_load_branch_side", return_value=False):
+                wizard.action_get_quote(clear_branch_lines=False)
+                wizard.action_select_service_rate(service_id="paquetexpress:bb")
+        self.assertTrue(wizard.show_destination_branch_picker)
+        self.assertFalse(wizard.show_origin_branch_picker)
+        destination = self.env["envia.quote.wizard.branch"].create(
+            {
+                "wizard_id": wizard.id,
+                "side": "destination",
+                "name": "MEXICO 5",
+                "branch_code": "MEX05",
+                "carrier": "paquetexpress",
+                "zip": "01000",
+                "city": "CDMX",
+                "country_code": "MX",
+                "state_code": state.code,
+            }
+        )
+        destination.action_select_branch()
+        self.assertEqual(wizard.quote_id.destination_branch_code, "MEX05")
+        self.assertFalse(wizard.quote_id.origin_branch_code)
+        module = self.order.read(["envia_module"])[0]["envia_module"]
+        self.assertEqual(module["branch_code"], "MEX05")
+
+    def test_route_type_label_from_drop_off(self):
+        Service = self.env["envia.quote.wizard.service"]
+        line = Service.new({})
+        self.assertEqual(line._route_type_label_for(0), "Domicile - Domicile")
+        self.assertEqual(line._route_type_label_for(1), "Branch - Domicile")
+        self.assertEqual(line._route_type_label_for(2), "Domicile - Branch")
+        self.assertEqual(line._route_type_label_for(3), "Branch - Branch")
+        self.assertEqual(line._route_type_label_for(False), "Domicile - Domicile")
+
+    def test_choose_delivery_carrier_create_recovers_missing_order_id(self):
+        # Web client may omit invisible order_id after onchange; recover from context.
+        quote_wizard = self.env["envia.quote.wizard"].create(
+            {
+                "sale_order_id": self.order.id,
+                "destination_partner_id": self.order.partner_shipping_id.id,
+            }
+        )
+        wizard = self.env["choose.delivery.carrier"].with_context(
+            default_order_id=self.order.id,
+            default_carrier_id=self.carrier.id,
+        ).create(
+            {
+                "carrier_id": self.carrier.id,
+                "envia_wizard_id": quote_wizard.id,
+            }
+        )
+        self.assertEqual(wizard.order_id, self.order)
+
+    def test_choose_delivery_carrier_get_rate_lists_services(self):
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": self.carrier.id,
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.update_price()
+        self.assertEqual(len(wizard.envia_service_line_ids), 1)
+        self.assertEqual(wizard.envia_service_line_ids.price, 120.0)
+
+    def test_choose_delivery_carrier_select_service_updates_cost(self):
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": self.carrier.id,
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.update_price()
+        action = wizard.with_context(service_id="fedex:1").action_envia_select_service()
+        self.assertFalse(action)
+        self.assertEqual(wizard.display_price, 120.0)
+        self.assertEqual(wizard.delivery_price, 120.0)
+        self.assertTrue(wizard.envia_has_selected_rate)
+
+    def _mx_state(self):
+        mx = self.env.ref("base.mx")
+        return mx, self.env["res.country.state"].search(
+            [("country_id", "=", mx.id)], limit=1
+        )
+
+    def test_choose_delivery_carrier_branch_first_quotes_branch_carrier(self):
+        mx, state = self._mx_state()
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="dhl:ocurre",
+                    carrier="dhl",
+                    carrier_name="DHL",
+                    service_name="Economy Ocurre",
+                    price=281.16,
+                    currency=self.order.currency_id.name,
+                    drop_off=2,
+                ),
+            ],
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {"order_id": self.order.id, "carrier_id": self.carrier.id}
+        )
+        quote_wizard = wizard.envia_wizard_id
+        quote_wizard.write(
+            {
+                "destination_location_type": "branch",
+                "destination_partner_id": self.order.partner_shipping_id.id,
+                "destination_street": "Pino Suarez",
+                "destination_country_id": mx.id,
+                "destination_postal_code": "64000",
+                "destination_city": "Monterrey",
+                "destination_state_id": state.id,
+            }
+        )
+        self.assertEqual(quote_wizard._expected_route_drop_off(), 2)
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.update_price()
+        self.assertEqual(quote_wizard._get_quote_carriers(), "all")
+        wizard.with_context(service_id="dhl:ocurre").action_envia_select_service()
+        selected = quote_wizard.service_line_ids.filtered("is_selected")
+        self.assertEqual(selected.carrier, "dhl")
+
+    def test_choose_delivery_carrier_update_restores_saved_branch_and_service(self):
+        mx, state = self._mx_state()
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "64000",
+                "destination_country": "MX",
+                "destination_location_type": "branch",
+                "destination_branch_code": "MTY01",
+                "destination_branch_name": "DHL MTY01",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "dhl:ocurre",
+                "envia_service_id": 123,
+                "carrier": "dhl",
+                "carrier_name": "DHL",
+                "service_name": "Economy Ocurre",
+                "price": 281.16,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        self.order.set_delivery_line(self.carrier, 281.16)
+
+        def fake_load(quote_wizard, side, carrier_codes=None):
+            raise AssertionError("Branch API must not run on Update open")
+
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaQuoteWizard._load_branches",
+            autospec=True,
+            side_effect=fake_load,
+        ), patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes, patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            # UI paints from onchange: restore must happen there, not only on create.
+            pending = self.env["choose.delivery.carrier"].new(
+                {"order_id": self.order.id, "carrier_id": self.carrier.id}
+            )
+            pending._onchange_carrier_id()
+            self.assertEqual(
+                pending.envia_wizard_id.destination_location_type, "branch"
+            )
+            self.assertEqual(
+                pending.envia_destination_location_type, "branch"
+            )
+            self.assertEqual(
+                pending.envia_wizard_id._get_selected_branch("destination").branch_code,
+                "MTY01",
+            )
+            get_adapter.return_value.quote.assert_not_called()
+            wizard = self.env["choose.delivery.carrier"].with_context(
+                carrier_recompute=True
+            ).create(
+                {
+                    "order_id": self.order.id,
+                    "carrier_id": self.carrier.id,
+                    "envia_wizard_id": pending.envia_wizard_id.id,
+                }
+            )
+            get_adapter.return_value.quote.assert_not_called()
+        quote_wizard = wizard.envia_wizard_id
+        self.assertEqual(quote_wizard.destination_location_type, "branch")
+        self.assertEqual(
+            quote_wizard._get_selected_branch("destination").branch_code, "MTY01"
+        )
+        selected = quote_wizard.service_line_ids.filtered("is_selected")
+        self.assertEqual(selected.service_id, "dhl:ocurre")
+
+    def test_choose_delivery_carrier_update_restores_draft_quote_with_service(self):
+        # Applied shipping can leave the quote in draft (e.g. drop_off mismatch);
+        # Update must still restore Ship/Pickup from that quote.
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 1.0,
+                "content": "Test",
+                "state": "draft",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+                "drop_off": 2,
+            }
+        )
+        quote.selected_service_id = service
+        self.order.set_delivery_line(self.carrier, 120.0)
+        self.assertFalse(quote._is_label_ready())
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes, patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["choose.delivery.carrier"].create(
+                {"order_id": self.order.id, "carrier_id": self.carrier.id}
+            )
+            get_adapter.return_value.quote.assert_not_called()
+        self.assertEqual(wizard.envia_wizard_id.origin_location_type, "address")
+        self.assertEqual(wizard.envia_wizard_id.destination_location_type, "address")
+        selected = wizard.envia_wizard_id.service_line_ids.filtered("is_selected")
+        self.assertEqual(selected.service_id, "fedex:1")
+
+    def test_choose_delivery_carrier_update_can_switch_cached_rate(self):
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        cheaper = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        faster = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "ups:ground",
+                "carrier": "ups",
+                "carrier_name": "UPS",
+                "service_name": "Ground",
+                "price": 150.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = cheaper
+        self.order.set_delivery_line(self.carrier, 120.0)
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes, patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["choose.delivery.carrier"].create(
+                {"order_id": self.order.id, "carrier_id": self.carrier.id}
+            )
+            get_adapter.return_value.quote.assert_not_called()
+        self.assertEqual(
+            wizard.envia_wizard_id.service_line_ids.filtered("is_selected").service_id,
+            "fedex:1",
+        )
+        action = wizard.with_context(service_id="ups:ground").action_envia_select_service()
+        self.assertFalse(action)
+        selected = wizard.envia_wizard_id.service_line_ids.filtered("is_selected")
+        self.assertEqual(selected.service_id, "ups:ground")
+        self.assertEqual(len(wizard.envia_wizard_id.service_line_ids), 2)
+        self.assertTrue(wizard.display_price)
+
+    def test_quote_wizard_rewrite_location_types_keeps_service_lines(self):
+        wizard = self.env["envia.quote.wizard"].create(
+            {
+                "sale_order_id": self.order.id,
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_postal_code": "06600",
+                "destination_postal_code": "44100",
+                "weight": 1.0,
+                "content": "Test",
+            }
+        )
+        Service = self.env["envia.quote.wizard.service"]
+        Service.create(
+            [
+                {
+                    "wizard_id": wizard.id,
+                    "service_id": "fedex:1",
+                    "carrier": "fedex",
+                    "service_name": "Economy",
+                    "price": 120.0,
+                },
+                {
+                    "wizard_id": wizard.id,
+                    "service_id": "ups:ground",
+                    "carrier": "ups",
+                    "service_name": "Ground",
+                    "price": 150.0,
+                },
+            ]
+        )
+        wizard.write(
+            {
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+            }
+        )
+        self.assertEqual(len(wizard.service_line_ids), 2)
+
+    def test_update_restore_keeps_rates_when_order_weight_differs(self):
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "67192",
+                "origin_country": "MX",
+                "destination_postal_code": "06500",
+                "destination_country": "MX",
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 2.5,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        for service_id, carrier, price in (
+            ("fedex:1", "fedex", 120.0),
+            ("ups:ground", "ups", 150.0),
+        ):
+            self.env["envia.quote.service"].create(
+                {
+                    "quote_id": quote.id,
+                    "service_id": service_id,
+                    "carrier": carrier,
+                    "service_name": service_id,
+                    "price": price,
+                    "currency_name": self.order.currency_id.name,
+                }
+            )
+        quote.selected_service_id = quote.service_ids[:1]
+        self.order.set_delivery_line(self.carrier, 120.0)
+        self.order.write({"shipping_weight": 0.01})
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["choose.delivery.carrier"].with_context(
+                carrier_recompute=True
+            ).create({"order_id": self.order.id, "carrier_id": self.carrier.id})
+        self.assertEqual(len(wizard.envia_wizard_id.service_line_ids), 2)
+        self.assertTrue(wizard.envia_show_service_rates)
+
+    def test_choose_delivery_carrier_write_keeps_restored_service_lines(self):
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        for service_id, carrier, price in (
+            ("fedex:1", "fedex", 120.0),
+            ("ups:ground", "ups", 150.0),
+        ):
+            self.env["envia.quote.service"].create(
+                {
+                    "quote_id": quote.id,
+                    "service_id": service_id,
+                    "carrier": carrier,
+                    "service_name": service_id,
+                    "price": price,
+                    "currency_name": self.order.currency_id.name,
+                }
+            )
+        quote.selected_service_id = quote.service_ids[:1]
+        self.order.set_delivery_line(self.carrier, 120.0)
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["choose.delivery.carrier"].create(
+                {"order_id": self.order.id, "carrier_id": self.carrier.id}
+            )
+        self.assertEqual(len(wizard.envia_wizard_id.service_line_ids), 2)
+        wizard.write(
+            {
+                "envia_origin_location_type": "address",
+                "envia_destination_location_type": "address",
+            }
+        )
+        self.assertEqual(len(wizard.envia_wizard_id.service_line_ids), 2)
+
+    def test_update_shipping_opens_envia_when_order_carrier_missing_pickup(self):
+        mx, state = self._mx_state()
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "64000",
+                "destination_country": "MX",
+                "destination_location_type": "branch",
+                "destination_branch_code": "MTY01",
+                "destination_branch_name": "DHL MTY01",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 2.5,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "dhl:ocurre",
+                "carrier": "dhl",
+                "service_name": "Economy Ocurre",
+                "price": 281.16,
+                "currency_name": self.order.currency_id.name,
+                "drop_off": 2,
+            }
+        )
+        quote.selected_service_id = service
+        self.order.set_delivery_line(self.carrier, 281.16)
+        self.order.carrier_id = False
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            action = self.order.with_context(carrier_recompute=True).action_open_delivery_wizard()
+            self.assertTrue(action.get("res_id"))
+            pending = self.env["choose.delivery.carrier"].browse(action["res_id"])
+            self.assertEqual(pending.carrier_id, self.carrier)
+            self.assertEqual(pending.total_weight, 2.5)
+        self.assertEqual(pending.envia_wizard_id.destination_location_type, "branch")
+        self.assertTrue(pending.envia_wizard_id.service_line_ids)
+
+    def test_update_shipping_finds_pickup_quote_without_selected_service(self):
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "64000",
+                "destination_country": "MX",
+                "destination_location_type": "branch",
+                "destination_branch_code": "MTY01",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 3.0,
+                "content": "Test",
+                "state": "draft",
+            }
+        )
+        self.order.set_delivery_line(self.carrier, 100.0)
+        self.order.carrier_id = False
+        self.assertEqual(self.order._get_restorable_envia_quote(), quote)
+        defaults = self.env["choose.delivery.carrier"].with_context(
+            default_order_id=self.order.id,
+            carrier_recompute=True,
+        ).default_get(["carrier_id", "total_weight"])
+        self.assertEqual(defaults["carrier_id"], self.carrier.id)
+        self.assertEqual(defaults["total_weight"], 3.0)
+
+    def test_location_type_change_clears_mismatched_rates(self):
+        wizard = self.env["envia.quote.wizard"].create(
+            {
+                "sale_order_id": self.order.id,
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_postal_code": "06600",
+                "destination_postal_code": "44100",
+                "weight": 1.0,
+                "content": "Test",
+            }
+        )
+        self.env["envia.quote.wizard.service"].create(
+            {
+                "wizard_id": wizard.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "service_name": "Economy",
+                "price": 120.0,
+                "drop_off": 0,
+            }
+        )
+        wizard.destination_location_type = "branch"
+        wizard._clear_stale_rates_if_route_mismatch()
+        self.assertFalse(wizard.service_line_ids)
+
+    def test_write_location_type_change_clears_rates(self):
+        wizard = self.env["envia.quote.wizard"].create(
+            {
+                "sale_order_id": self.order.id,
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_postal_code": "06600",
+                "destination_postal_code": "44100",
+                "weight": 1.0,
+                "content": "Test",
+            }
+        )
+        self.env["envia.quote.wizard.service"].create(
+            {
+                "wizard_id": wizard.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "service_name": "Economy",
+                "price": 120.0,
+                "drop_off": 0,
+            }
+        )
+        wizard.write({"destination_location_type": "branch"})
+        self.assertFalse(wizard.service_line_ids)
+
+    def _create_hybrid_wizard(self, **values):
+        mexico = self.env.ref("base.mx")
+        state = self.env.ref("base.state_mx_df")
+        company = self.env.company
+        defaults = {
+            "sale_order_id": self.order.id,
+            "origin_partner_id": company.partner_id.id,
+            "origin_location_type": "address",
+            "origin_street": "Av Negocio 100",
+            "origin_postal_code": "06600",
+            "origin_city": "Ciudad de Mexico",
+            "origin_country_id": mexico.id,
+            "origin_state_id": state.id,
+            "destination_partner_id": self.order.partner_shipping_id.id,
+            "destination_location_type": "address",
+            "destination_street": "Calle Cliente 200",
+            "destination_postal_code": "44100",
+            "destination_city": "Guadalajara",
+            "destination_country_id": mexico.id,
+            "destination_state_id": self.env.ref("base.state_mx_jal").id,
+            "weight": 1.0,
+            "content": "Test",
+        }
+        defaults.update(values)
+        return self.env["envia.quote.wizard"].with_context(
+            envia_skip_branch_autoload=True
+        ).create(defaults)
+
+    def test_hybrid_contact_scenario2_dom_to_ocurre(self):
+        wizard = self._create_hybrid_wizard(
+            destination_location_type="branch",
+            destination_street="Pino Suarez",
+            destination_postal_code="64400",
+            destination_city="Monterrey",
+        )
+        contact = wizard._build_contact_for_side("destination")
+        self.assertEqual(contact.name, self.order.partner_shipping_id.name)
+        self.assertFalse(contact.branch_code)
+        self.assertEqual(contact.street, "Pino Suarez")
+        self.assertEqual(wizard._expected_route_drop_off(), 2)
+
+    def test_hybrid_contact_scenario3_ocurre_to_dom(self):
+        wizard = self._create_hybrid_wizard(origin_location_type="branch")
+        contact = wizard._build_contact_for_side("origin")
+        self.assertEqual(contact.name, self.env.company.partner_id.name)
+        self.assertFalse(contact.branch_code)
+        self.assertEqual(contact.street, "Av Negocio 100")
+        dest = wizard._build_contact_for_side("destination")
+        self.assertFalse(dest.branch_code)
+        self.assertEqual(wizard._expected_route_drop_off(), 1)
+
+    def test_hybrid_contact_scenario1_both_ocurre(self):
+        wizard = self._create_hybrid_wizard(
+            origin_location_type="branch",
+            destination_location_type="branch",
+            destination_street="Branch Street 50",
+            destination_postal_code="03100",
+        )
+        origin = wizard._build_contact_for_side("origin")
+        dest = wizard._build_contact_for_side("destination")
+        self.assertFalse(origin.branch_code)
+        self.assertFalse(dest.branch_code)
+        self.assertEqual(wizard._expected_route_drop_off(), 3)
+
+    def test_get_quote_passes_expected_drop_off(self):
+        wizard = self._create_hybrid_wizard(destination_location_type="branch")
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="dhl:ocurre",
+                    carrier="dhl",
+                    carrier_name="DHL",
+                    service_name="Economy Ocurre",
+                    price=281.16,
+                    currency=self.order.currency_id.name,
+                    drop_off=2,
+                ),
+            ],
+        )
+        captured = {}
+
+        def _quote(request):
+            captured["expected_drop_off"] = request.expected_drop_off
+            return response
+
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.side_effect = _quote
+            wizard._perform_get_quote()
+        self.assertEqual(captured.get("expected_drop_off"), 2)
+
+    def test_confirm_with_origin_pickup_without_origin_branch(self):
+        # Origin=branch does not require selecting a concrete origin branch code.
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                    drop_off=1,
+                ),
+            ],
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {"order_id": self.order.id, "carrier_id": self.carrier.id}
+        )
+        quote_wizard = wizard.envia_wizard_id
+        quote_wizard.write(
+            {
+                "origin_location_type": "branch",
+                "origin_street": "Av Negocio 100",
+                "origin_postal_code": "67192",
+                "origin_city": "Guadalupe",
+                "origin_country_id": self.env.ref("base.mx").id,
+                "origin_state_id": self.env.ref("base.state_mx_nl").id,
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.update_price()
+        wizard.with_context(service_id="fedex:1").action_envia_select_service()
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.button_confirm()
+        self.assertTrue(self.order.order_line.filtered("is_delivery"))
+        self.assertFalse(wizard.envia_wizard_id.quote_id.origin_branch_code)
+
+    def test_confirm_with_destination_branch_persists_branch_code(self):
+        mx, state = self._mx_state()
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="paquetexpress:ground_do",
+                    carrier="paquetexpress",
+                    carrier_name="Paquetexpress",
+                    service_name="Domicilio - Ocurre",
+                    price=39.44,
+                    currency=self.order.currency_id.name,
+                    drop_off=2,
+                ),
+            ],
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {"order_id": self.order.id, "carrier_id": self.carrier.id}
+        )
+        quote_wizard = wizard.envia_wizard_id
+        quote_wizard.write(
+            {
+                "destination_location_type": "branch",
+                "destination_partner_id": self.order.partner_shipping_id.id,
+                "destination_street": "Pino Suarez",
+                "destination_country_id": mx.id,
+                "destination_postal_code": "03100",
+                "destination_city": "CDMX",
+                "destination_state_id": state.id,
+            }
+        )
+        self.env["envia.quote.wizard.branch"].create(
+            {
+                "wizard_id": quote_wizard.id,
+                "side": "destination",
+                "name": "Paquetexpress Branch",
+                "branch_code": "MEX05",
+                "carrier": "paquetexpress",
+                "zip": "03100",
+                "city": "CDMX",
+                "country_code": "MX",
+                "state_code": state.code,
+                "is_selected": True,
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.update_price()
+        wizard.with_context(service_id="paquetexpress:ground_do").action_envia_select_service()
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.button_confirm()
+        quote = quote_wizard.quote_id
+        self.assertEqual(quote.destination_branch_code, "MEX05")
+        self.assertEqual(quote.state, "quoted")
+        module = self.order.read(["envia_module"])[0]["envia_module"]
+        self.assertEqual(module["branch_code"], "MEX05")
+
+    def test_choose_delivery_carrier_confirm_applies_delivery_line_and_quote(self):
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": self.order.id,
+                "carrier_id": self.carrier.id,
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.update_price()
+        wizard.with_context(service_id="fedex:1").action_envia_select_service()
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.button_confirm()
+        delivery_line = self.order.order_line.filtered("is_delivery")
+        self.assertTrue(delivery_line)
+        self.assertEqual(delivery_line.price_unit, 120.0)
+        quote = wizard.envia_wizard_id.quote_id
+        self.assertTrue(quote.selected_service_id)
+        self.assertIn("FedEx", quote.selected_service_label)
+        self.assertEqual(quote.sale_order_id, self.order)
+
+    def test_add_shipping_after_removing_delivery_does_not_restore_old_quote(self):
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        wizard = self.env["choose.delivery.carrier"].create(
+            {"order_id": self.order.id, "carrier_id": self.carrier.id}
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.update_price()
+        wizard.with_context(service_id="fedex:1").action_envia_select_service()
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            get_adapter.return_value.quote.return_value = response
+            wizard.button_confirm()
+        self.order.order_line.filtered("is_delivery").unlink()
+        self.assertFalse(self.order.delivery_set)
+        self.assertFalse(self.order._get_restorable_envia_quote())
+        fresh = self.env["choose.delivery.carrier"].create(
+            {"order_id": self.order.id, "carrier_id": self.carrier.id}
+        )
+        self.assertFalse(fresh.envia_wizard_id.service_line_ids)
+
+    def test_label_generation_requires_settings_flag(self):
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        with self.assertRaises(UserError):
+            quote._validate_label_generation()
+        self.env.company.envia_enable_labels = True
+        quote._validate_label_generation()
+
+    def test_show_quote_archive_toggles_quotes_menu(self):
+        menu = self.env.ref("envia.menu_envia_quotes")
+        settings = self.env["res.config.settings"].create({})
+        settings.envia_show_quote_archive = True
+        settings.execute()
+        self.assertTrue(menu.active)
+        settings.envia_show_quote_archive = False
+        settings.execute()
+        self.assertFalse(menu.active)
+
+    def test_default_carrier_setting_preselects_envia(self):
+        self.env.company.envia_default_carrier = True
+        defaults = self.env["choose.delivery.carrier"].with_context(
+            default_order_id=self.order.id,
+        ).default_get(["carrier_id"])
+        self.assertEqual(defaults.get("carrier_id"), self.carrier.id)
+
+    def test_branches_disabled_forces_address_only(self):
+        self.env.company.envia_enable_branches = False
+        wizard = self.env["envia.quote.wizard"].create(
+            {
+                "sale_order_id": self.order.id,
+                "destination_partner_id": self.order.partner_shipping_id.id,
+                "origin_location_type": "branch",
+                "destination_location_type": "branch",
+                "origin_postal_code": "06600",
+                "destination_postal_code": "44100",
+                "weight": 1.0,
+                "content": "Test",
+            }
+        )
+        self.assertEqual(wizard.origin_location_type, "address")
+        self.assertEqual(wizard.destination_location_type, "address")
+        self.assertFalse(wizard._uses_branch_route())

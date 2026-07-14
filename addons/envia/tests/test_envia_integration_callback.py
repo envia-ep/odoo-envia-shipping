@@ -1,7 +1,10 @@
+from datetime import date
+
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
 import json
 import xmlrpc.client
+from unittest.mock import patch
 
 
 def xmlrpc_request(method_name: str, params: list) -> bytes:
@@ -17,6 +20,7 @@ from odoo.addons.envia.services.envia_integration_callback import (
     get_integration_database_name,
     handle_envia_jsonrpc_request,
     handle_envia_xmlrpc_common_request,
+    handle_envia_xmlrpc_object_request,
     is_success_status,
     parse_callback_payload,
     resolve_callback_database,
@@ -120,7 +124,7 @@ class TestEnviaIntegrationCallbackService(TransactionCase):
             status="success",
             hash="envia-shipping-api-token-xyz",
             shop="shop-456",
-            company=self.env.company.id,
+            company=5592,
             user=self.env.user.id,
             api_key=self.credentials["api_key"],
             database=self.env.cr.dbname,
@@ -135,6 +139,7 @@ class TestEnviaIntegrationCallbackService(TransactionCase):
         self.assertTrue(result["ok"])
         self.assertEqual(company.envia_api_token, "envia-shipping-api-token-xyz")
         self.assertEqual(company.envia_shop_id, "shop-456")
+        self.assertEqual(company.envia_company_id, "5592")
         self.assertEqual(company.envia_integration_api_key, self.credentials["api_key"])
 
     def test_apply_integration_callback_resolves_company_from_pending_setup(self):
@@ -143,6 +148,70 @@ class TestEnviaIntegrationCallbackService(TransactionCase):
             status="success",
             hash="envia-shipping-api-token-xyz",
             shop="shop-456",
+            company=5592,
+            user=self.env.user.id,
+            api_key=self.credentials["api_key"],
+            database=self.env.cr.dbname,
+            message=None,
+        )
+        result = apply_integration_callback(
+            self.env(user=self.env.user),
+            payload,
+            resolved_database=self.env.cr.dbname,
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["company"], self.env.company.id)
+        self.assertEqual(self.env.company.envia_company_id, "5592")
+
+    def test_apply_integration_callback_resolves_company_for_non_system_user(self):
+        user = self.env["res.users"].create(
+            {
+                "name": "Envia Integrator",
+                "login": "envia_integrator@test",
+                "group_ids": [(6, 0, [self.env.ref("base.group_user").id])],
+                "company_id": self.env.company.id,
+                "company_ids": [(6, 0, [self.env.company.id])],
+            }
+        )
+        credentials = generate_integration_credentials(
+            self.env,
+            self.env.company,
+            user=user,
+        )
+        self.env.company.sudo().write({"envia_integration_api_key": False})
+        self.env["ir.config_parameter"].sudo().set_param(
+            "envia.pending_plugin_setup_company_id",
+            "",
+        )
+        payload = EnviaIntegrationCallbackPayload(
+            status="success",
+            hash="envia-shipping-api-token-xyz",
+            shop="shop-456",
+            company=5592,
+            user=user.id,
+            api_key=credentials["api_key"],
+            database=self.env.cr.dbname,
+            message=None,
+        )
+        result = apply_integration_callback(
+            self.env(user=user),
+            payload,
+            resolved_database=self.env.cr.dbname,
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["company"], self.env.company.id)
+
+    def test_apply_integration_callback_resolves_company_from_envia_company_id(self):
+        self.env.company.sudo().write(
+            {
+                "envia_company_id": "5592",
+                "envia_integration_api_key": False,
+            }
+        )
+        payload = EnviaIntegrationCallbackPayload(
+            status="success",
+            hash="envia-shipping-api-token-xyz",
+            shop="shop-789",
             company=5592,
             user=self.env.user.id,
             api_key=self.credentials["api_key"],
@@ -311,3 +380,53 @@ class TestEnviaIntegrationCallbackService(TransactionCase):
         status_code, response = handle_envia_xmlrpc_common_request(payload)
         self.assertEqual(status_code, 200)
         self.assertIn(b"<boolean>0</boolean>", response)
+
+    def test_handle_envia_xmlrpc_object_request_executes_kw_with_valid_api_key(self):
+        payload = xmlrpc_request(
+            "execute_kw",
+            [
+                self.env.cr.dbname,
+                self.test_user.id,
+                self.credentials["api_key"],
+                "res.users",
+                "search_count",
+                [[("id", "=", self.test_user.id)]],
+                {},
+            ],
+        )
+        with patch("odoo.http.dispatch_rpc", return_value=1) as dispatch_rpc:
+            status_code, response = handle_envia_xmlrpc_object_request(payload)
+        dispatch_rpc.assert_called_once()
+        self.assertEqual(dispatch_rpc.call_args.args[0], "object")
+        self.assertEqual(dispatch_rpc.call_args.args[1], "execute_kw")
+        self.assertEqual(status_code, 200)
+        response_text = response.decode() if isinstance(response, bytes) else response
+        self.assertIn("<int>1</int>", response_text)
+
+    def test_handle_envia_xmlrpc_object_request_rejects_invalid_payload(self):
+        status_code, response = handle_envia_xmlrpc_object_request(b"not-xml")
+        self.assertEqual(status_code, 400)
+        response_text = response.decode() if isinstance(response, bytes) else response
+        self.assertIn("Invalid XML-RPC payload", response_text)
+
+    def test_handle_envia_xmlrpc_object_request_serializes_date_fields(self):
+        payload = xmlrpc_request(
+            "execute_kw",
+            [
+                self.env.cr.dbname,
+                self.test_user.id,
+                self.credentials["api_key"],
+                "sale.order",
+                "search_read",
+                [[("id", "=", 1)]],
+                {"fields": ["date_order"]},
+            ],
+        )
+        with patch(
+            "odoo.http.dispatch_rpc",
+            return_value=[{"id": 1, "date_order": date(2026, 7, 2)}],
+        ):
+            status_code, response = handle_envia_xmlrpc_object_request(payload)
+        self.assertEqual(status_code, 200)
+        response_text = response.decode() if isinstance(response, bytes) else response
+        self.assertIn("2026-07-02", response_text)

@@ -192,13 +192,9 @@
                             </div>
                         </div>
                         <div class="text-center mt-3 d-flex flex-wrap justify-content-center gap-2">
-                            <button name="action_go_to_quotes" type="object"
-                                    string="Learn how to quote"
-                                    class="btn btn-primary btn-lg"
-                                    icon="fa-arrow-right"/>
                             <button name="action_go_to_plugin_settings" type="object"
                                     string="Open Settings"
-                                    class="btn btn-secondary btn-lg"
+                                    class="btn btn-primary btn-lg"
                                     icon="fa-cog"
                                     groups="base.group_system"/>
                         </div>
@@ -231,14 +227,9 @@
                             class="btn-primary"
                             invisible="state != 'ready'"
                             icon="fa-plug"/>
-                    <button name="action_go_to_quotes" type="object"
-                            string="Learn how to quote"
-                            class="btn-primary"
-                            invisible="state != 'success'"
-                            icon="fa-arrow-right"/>
                     <button name="action_go_to_plugin_settings" type="object"
                             string="Open Settings"
-                            class="btn-secondary"
+                            class="btn-primary"
                             invisible="state != 'success'"
                             icon="fa-cog"
                             groups="base.group_system"/>

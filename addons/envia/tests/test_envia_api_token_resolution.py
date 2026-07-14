@@ -14,12 +14,25 @@ class TestEnviaApiTokenResolution(TransactionCase):
                 "envia_oauth_connected": True,
                 "envia_oauth_access_token": "oauth-access-token-123",
                 "envia_api_token": "envia-shipping-token-456",
+                "envia_shop_id": "34084",
             }
         )
         adapter = get_envia_adapter(company)
         self.assertEqual(adapter.client.base_url, "https://api-test.envia.com/")
         self.assertEqual(adapter.client.token, "envia-shipping-token-456")
+        self.assertEqual(adapter.shop_id, "34084")
         self.assertTrue(adapter.client.use_bearer_auth)
+
+    def test_get_envia_adapter_raises_when_shop_id_is_missing(self):
+        company = self.env.company
+        company.write(
+            {
+                "envia_api_token": "envia-shipping-token-456",
+                "envia_shop_id": False,
+            }
+        )
+        with self.assertRaises(UserError):
+            get_envia_adapter(company)
 
     def test_get_envia_adapter_uses_only_envia_api_token_not_oauth_jwt(self):
         company = self.env.company

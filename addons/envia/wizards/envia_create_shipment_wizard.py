@@ -36,11 +36,8 @@ class EnviaCreateShipmentWizard(models.TransientModel):
                 wizard.package_summary = False
                 continue
             wizard.package_summary = _(
-                "%(weight)s kg · %(length)s×%(width)s×%(height)s cm · %(content)s",
+                "%(weight)s kg · %(content)s",
                 weight=quote.weight,
-                length=quote.length,
-                width=quote.width,
-                height=quote.height,
                 content=quote.content,
             )
 

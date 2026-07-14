@@ -15,18 +15,18 @@ class QuoteRequest:
     destination_postal_code: str
     destination_country: str
     weight: float
-    length: float
-    width: float
-    height: float
     content: str
     origin_state: str | None = None
     destination_state: str | None = None
     declared_value: float | None = None
     currency: str = "MXN"
     carriers: str = "all"
+    expected_drop_off: int | None = None
     additional_services: list[AdditionalService] = field(default_factory=list)
     origin_contact: "Contact | None" = None
     destination_contact: "Contact | None" = None
+    items: list["ShipmentItem"] = field(default_factory=list)
+    locale: str = "es_MX"
 
 
 @dataclass
@@ -37,7 +37,9 @@ class QuoteService:
     service_name: str
     price: float
     currency: str
+    envia_service_id: int | None = None
     estimated_delivery_days: int | None = None
+    drop_off: int | None = None
     max_weight: float | None = None
     restrictions: list[str] = field(default_factory=list)
     additional_services_available: list[str] = field(default_factory=list)
@@ -66,6 +68,7 @@ class Contact:
     interior_number: str | None = None
     district: str | None = None
     identification_number: str | None = None
+    branch_code: str | None = None
 
 
 @dataclass
@@ -76,6 +79,7 @@ class ShipmentItem:
     currency: str
     weight: float | None = None
     sku: str | None = None
+    product_id: int | None = None
     product_code: str | None = None
     country_of_manufacture: str | None = None
 
@@ -94,9 +98,6 @@ class CreateShipmentRequest:
     carrier: str | None = None
     service_name: str | None = None
     package_weight: float | None = None
-    package_length: float | None = None
-    package_width: float | None = None
-    package_height: float | None = None
     package_content: str | None = None
 
 

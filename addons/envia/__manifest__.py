@@ -1,6 +1,6 @@
 {
     "name": "Envia.com",
-    "version": "19.0.1.125.0",
+    "version": "19.0.1.0.3",
     "category": "Inventory/Delivery",
     "summary": "Quote, create and track Envia.com shipments from Odoo",
     "description": """
@@ -14,8 +14,8 @@ Installation
 ------------
 
 Install only **Envia.com** from Apps. Odoo installs all module dependencies
-automatically (including ``envia_http`` and ``product_dimension`` from the same
-package, plus standard apps such as Sales and Inventory).
+automatically (including ``envia_http`` from the same package, plus standard
+apps such as Sales and Inventory).
 
 Server administrators must add ``envia_http`` to ``server_wide_modules`` in
 ``odoo.conf`` and restart Odoo so OAuth and integration callbacks work before
@@ -29,15 +29,15 @@ Not compatible with standard **Odoo Online** (odoo.com SaaS).
 OAuth endpoints
 ---------------
 
-This package ships Envia.com **sandbox** OAuth endpoints as defaults.
-Production deployments must override ``ENVIA_OAUTH_INTEGRATION_URL`` and
-``ENVIA_OAUTH_POPUP_URL`` (env vars or ``ir.config_parameter``) with the
-production client credentials issued by Envia.com.
+This package ships Envia.com **production** environment defaults in module data.
+Developers can override with ``ENVIA_ENVIRONMENT=sandbox`` and related ``ENVIA_*``
+env vars. OAuth URLs in module data must use production client credentials from
+Envia.com before release. See ``docker-compose.yml`` anchors ``envia-dev`` / ``envia-prod``.
     """,
     "author": "Alejandro Prado",
     "website": "https://envia.com",
     "license": "AGPL-3",
-    "depends": ["base", "mail", "onboarding", "sale", "stock", "sale_stock", "delivery", "product_dimension", "envia_http"],
+    "depends": ["base", "mail", "onboarding", "sale", "stock", "sale_stock", "delivery", "envia_http"],
     "data": [
         "data/ir_sequence_data.xml",
         "security/envia_security.xml",
@@ -55,6 +55,7 @@ production client credentials issued by Envia.com.
         "views/sale_order_views.xml",
         "views/choose_delivery_carrier_views.xml",
         "views/stock_picking_views.xml",
+        "views/product_views.xml",
         "wizards/envia_quote_wizard_views.xml",
         "wizards/envia_create_shipment_wizard_views.xml",
         "wizards/envia_plugin_connect_wizard_views.xml",

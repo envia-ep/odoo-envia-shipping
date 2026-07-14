@@ -38,16 +38,29 @@
                                 </div>
                                 <div class="o_envia_settings_version_row d-flex flex-wrap gap-2 mt-2">
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">Module</span>
-                                        <field name="envia_module_version_display"
+                                        <span class="o_envia_settings_version_label">Shop ID</span>
+                                        <field name="envia_shop_id_display"
                                                nolabel="1"
                                                readonly="1"
                                                class="oe_inline"/>
                                     </span>
-                                    <span class="o_envia_settings_version_chip"
-                                          invisible="not envia_oauth_connected">
-                                        <span class="o_envia_settings_version_label">Plugin</span>
-                                        <field name="envia_plugin_version_display"
+                                    <span class="o_envia_settings_version_chip">
+                                        <span class="o_envia_settings_version_label">Company ID</span>
+                                        <field name="envia_company_id_display"
+                                               nolabel="1"
+                                               readonly="1"
+                                               class="oe_inline"/>
+                                    </span>
+                                    <span class="o_envia_settings_version_chip">
+                                        <span class="o_envia_settings_version_label">Odoo</span>
+                                        <field name="envia_odoo_version_display"
+                                               nolabel="1"
+                                               readonly="1"
+                                               class="oe_inline"/>
+                                    </span>
+                                    <span class="o_envia_settings_version_chip">
+                                        <span class="o_envia_settings_version_label">Module</span>
+                                        <field name="envia_module_version_display"
                                                nolabel="1"
                                                readonly="1"
                                                class="oe_inline"/>
@@ -84,32 +97,54 @@
                                  invisible="envia_has_api_token">
                                 No token stored yet. Complete the Envia.com connection or wait for the integration callback.
                             </div>
-                            <div class="mt-2" invisible="not envia_has_api_token">
-                                <button name="action_test_envia_connection" type="object"
-                                        string="Test connection"
-                                        class="btn btn-secondary btn-sm"
-                                        icon="fa-plug"/>
-                            </div>
                         </setting>
                     </block>
 
                     <block title="Shipping defaults"
-                           help="Default origin and carriers used when quoting from sales orders and Add shipping.">
-                        <setting string="Default ship-from address"
-                                 help="Origin for Envia quotes. Must include street, city, postal code, country, phone and email. Destination comes from the customer delivery address on the order.">
-                            <field name="envia_default_origin_partner_id"
+                           help="Default origin used when quoting from sales orders and Add shipping.">
+                        <setting string="Default ship-from warehouse"
+                                 help="Origin for Envia quotes. Uses the warehouse address (linked contact). Must include street, city, postal code, country, phone and email. Destination comes from the customer delivery address on the order.">
+                            <field name="envia_default_origin_warehouse_id"
                                    options="{'no_create': True}"
-                                   domain="[('type', 'in', ['contact', 'other', 'invoice'])]"/>
-                        </setting>
-                        <setting string="Default carriers"
-                                 help="Carriers requested when quoting all Envia rates.">
-                            <field name="envia_default_carrier_ids" widget="many2many_tags"/>
+                                   domain="[('company_id', '=', company_id)]"/>
+                            <div class="text-muted small mt-2"
+                                 invisible="not envia_default_origin_warehouse_id">
+                                <span class="fw-bold">Linked contact:</span>
+                                <field name="envia_default_origin_partner_display"
+                                       class="d-inline"
+                                       nolabel="1"
+                                       readonly="1"/>
+                            </div>
+                            <div class="text-muted small mt-1"
+                                 invisible="not envia_default_origin_address_preview">
+                                <field name="envia_default_origin_address_preview"
+                                       nolabel="1"
+                                       readonly="1"
+                                       widget="text"/>
+                            </div>
                         </setting>
                         <setting>
-                            <field name="envia_default_carrier"/>
-                        </setting>
-                        <setting>
-                            <field name="envia_enable_branches"/>
+                            <div class="o_envia_settings_toggle_stack">
+                                <div class="o_envia_settings_toggle_row">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Use Envia as default shipping method</div>
+                                        <div class="text-muted small">
+                                            Pre-select Envia.com in Add shipping on sale orders.
+                                        </div>
+                                    </div>
+                                    <field name="envia_default_carrier" nolabel="1"/>
+                                </div>
+                                <div class="o_envia_settings_toggle_row">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Enable branch pickup and delivery</div>
+                                        <div class="text-muted small">
+                                            Allow origin/destination branch pickup and drop-off.
+                                            When disabled, only home delivery routes are available.
+                                        </div>
+                                    </div>
+                                    <field name="envia_enable_branches" nolabel="1"/>
+                                </div>
+                            </div>
                         </setting>
                     </block>
                 </app>

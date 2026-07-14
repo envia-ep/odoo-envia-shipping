@@ -83,13 +83,13 @@ class EnviaIntegrationController(http.Controller):
                 },
                 status=error.http_status,
             )
-        except Exception as error:
+        except Exception:
             _logger.exception("Envia integration callback failed")
             return request.make_json_response(
                 {
                     "ok": False,
                     "error": "internal_error",
-                    "message": str(error),
+                    "message": "Internal server error.",
                 },
                 status=500,
             )
@@ -101,14 +101,17 @@ class EnviaIntegrationController(http.Controller):
         *,
         bearer_api_key: str | None,
     ) -> dict:
+        import odoo.http as http
+
         if (
-            request.db
-            and request.db == db_name
-            and getattr(request, "env", None) is not None
-            and get_integration_database_name(request.env) == db_name
+            http.request
+            and http.request.db
+            and http.request.db == db_name
+            and getattr(http.request, "env", None) is not None
+            and get_integration_database_name(http.request.env) == db_name
         ):
-            callback_env = request.env(
-                user=authenticate_integration_callback(request.env, payload.api_key)
+            callback_env = http.request.env(
+                user=authenticate_integration_callback(http.request.env, payload.api_key)
             )
             result = apply_integration_callback(
                 callback_env,
@@ -116,7 +119,7 @@ class EnviaIntegrationController(http.Controller):
                 bearer_api_key=bearer_api_key,
                 resolved_database=get_integration_database_name(callback_env),
             )
-            request.env.cr.commit()
+            http.request.env.cr.commit()
             return result
 
         registry = Registry(db_name)
@@ -162,89 +165,19 @@ class EnviaIntegrationController(http.Controller):
                 {"ok": False, "error": error.error_code, "message": error.message},
                 status=error.http_status,
             )
-        except Exception as error:
+        except Exception:
             _logger.exception("Envia integration connect failed")
             return request.make_json_response(
-                {"ok": False, "error": "internal_error", "message": str(error)},
+                {"ok": False, "error": "internal_error", "message": "Internal server error."},
                 status=500,
             )
 
     @staticmethod
     def _process_integration_connect(db_name: str, data: dict, api_key: str) -> dict:
-        required_fields = ("status", "hash", "shop", "company", "user")
-        missing = [name for name in required_fields if name not in data]
-        if missing:
-            raise EnviaIntegrationCallbackError(
-                "invalid_payload",
-                "Missing required fields: %s" % ", ".join(missing),
-            )
-        try:
-            company_id = int(data["company"])
-        except (TypeError, ValueError) as error:
-            raise EnviaIntegrationCallbackError(
-                "invalid_payload",
-                "Field company must be an integer.",
-            ) from error
-
-        if (
-            request.db
-            and request.db == db_name
-            and getattr(request, "env", None) is not None
-            and get_integration_database_name(request.env) == db_name
-        ):
-            env = request.env(user=authenticate_integration_callback(request.env, api_key))
-            company = env["res.company"].browse(company_id)
-            if not company.exists():
-                raise EnviaIntegrationCallbackError(
-                    "company_not_found",
-                    "Company was not found.",
-                    http_status=404,
-                )
-            if str(data["status"]).strip().lower() not in {"success", "ok", "connected"}:
-                raise EnviaIntegrationCallbackError(
-                    "integration_failed",
-                    str(data.get("message") or data["status"]),
-                    http_status=422,
-                )
-            company.write(
-                {
-                    "envia_oauth_connected": True,
-                    "envia_api_token": str(data["hash"]).strip(),
-                    "envia_shop_id": str(data["shop"]).strip(),
-                    "envia_oauth_last_error": False,
-                    "envia_integration_api_key": api_key,
-                }
-            )
-            request.env.cr.commit()
-            return {"ok": True, "company": company.id, "shop": str(data["shop"]).strip()}
-
-        registry = Registry(db_name)
-        with registry.cursor() as cr:
-            bootstrap_env = api.Environment(cr, odoo.SUPERUSER_ID, {})
-            user_id = authenticate_integration_callback(bootstrap_env, api_key)
-            env = api.Environment(cr, user_id, {})
-            company = env["res.company"].browse(company_id)
-            if not company.exists():
-                raise EnviaIntegrationCallbackError(
-                    "company_not_found",
-                    "Company was not found.",
-                    http_status=404,
-                )
-            if str(data["status"]).strip().lower() not in {"success", "ok", "connected"}:
-                raise EnviaIntegrationCallbackError(
-                    "integration_failed",
-                    str(data.get("message") or data["status"]),
-                    http_status=422,
-                )
-            company.write(
-                {
-                    "envia_oauth_connected": True,
-                    "envia_api_token": str(data["hash"]).strip(),
-                    "envia_shop_id": str(data["shop"]).strip(),
-                    "envia_oauth_last_error": False,
-                    "envia_integration_api_key": api_key,
-                }
-            )
-            cr.commit()
-            return {"ok": True, "company": company.id, "shop": str(data["shop"]).strip()}
+        payload = parse_callback_payload(data, bearer_api_key=api_key)
+        return EnviaIntegrationController._process_integration_callback(
+            db_name,
+            payload,
+            bearer_api_key=api_key,
+        )
 

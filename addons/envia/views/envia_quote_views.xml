@@ -7,15 +7,17 @@
             <list js_class="envia_quote_list" create="false"
                   decoration-muted="state == 'expired'"
                   decoration-success="selected_service_id">
+                <field name="envia_show_quote_archive" column_invisible="True"/>
                 <header>
                     <button name="action_open_quote_wizard" type="object"
-                            string="New Quote" display="always" class="btn-primary"/>
+                            string="New Quote" display="always" class="btn-primary"
+                            invisible="not envia_show_quote_archive"/>
                 </header>
                 <field name="name"/>
                 <field name="origin_postal_code" string="From"/>
                 <field name="destination_postal_code" string="To"/>
                 <field name="sale_order_id" optional="show"/>
-                <field name="selected_service_id" string="Selected rate"/>
+                <field name="selected_service_label" string="Selected rate"/>
                 <field name="state" widget="badge"
                        decoration-success="state == 'quoted'"
                        decoration-info="state == 'used'"
@@ -30,9 +32,11 @@
         <field name="arch" type="xml">
             <form create="false" class="o_envia_quote_form">
                 <header>
+                    <field name="envia_enable_labels" invisible="1"/>
+                    <field name="envia_show_quote_archive" invisible="1"/>
                     <button name="action_open_create_shipment_wizard" type="object"
                             string="Generate Label" class="btn-primary"
-                            invisible="state != 'quoted' or not selected_service_id"
+                            invisible="not envia_enable_labels or state != 'quoted' or not selected_service_id"
                             icon="fa-print"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="quoted,used"/>
@@ -44,8 +48,8 @@
 
                     <div class="alert alert-warning mb-3" role="alert"
                          invisible="service_ids">
-                        No carrier rates yet. Use <strong>Quote Shipment</strong>
-                        from the Envia.com menu to add origin, destination, and package.
+                        No carrier rates yet. Use <strong>Add shipping</strong>
+                        on a sale order to quote with Envia.
                     </div>
 
                     <div class="oe_title mb-3">
@@ -67,7 +71,7 @@
 
                     <group invisible="not selected_service_id">
                         <group string="Selected rate">
-                            <field name="selected_service_id" readonly="1"/>
+                            <field name="selected_service_label" readonly="1"/>
                         </group>
                         <group string="Source" invisible="not sale_order_id">
                             <field name="sale_order_id" readonly="1"/>
@@ -81,15 +85,12 @@
                             <field name="declared_value" readonly="1"/>
                             <field name="currency_id" readonly="1"/>
                         </group>
-                        <group string="Dimensions (cm)">
-                            <field name="length" readonly="1"/>
-                            <field name="width" readonly="1"/>
-                            <field name="height" readonly="1"/>
-                        </group>
                     </group>
 
-                    <separator string="Available rates" invisible="not service_ids"/>
-                    <field name="service_ids" nolabel="1" invisible="not service_ids">
+                    <separator string="Available rates"
+                               invisible="not envia_show_quote_archive or not service_ids"/>
+                    <field name="service_ids" nolabel="1"
+                           invisible="not envia_show_quote_archive or not service_ids">
                         <list create="false" delete="false" edit="false"
                               decoration-success="is_selected">
                             <field name="carrier_name"/>
@@ -164,9 +165,9 @@
     <menuitem id="menu_envia_root" name="Envia.com" sequence="50" action="action_envia_app_entry"
               web_icon="envia,static/description/icon.png"/>
     <menuitem id="menu_envia_quote_wizard" name="Quote Shipment" parent="menu_envia_root"
-              action="action_envia_quote_wizard" sequence="5"/>
+              action="action_envia_quote_wizard" sequence="5" active="False"/>
     <menuitem id="menu_envia_quotes" name="Quotes" parent="menu_envia_root"
-              action="action_envia_quote" sequence="10"/>
+              action="action_envia_quote" sequence="10" active="False"/>
     <menuitem id="menu_envia_configuration" name="Administration" parent="menu_envia_root"
               sequence="90" groups="base.group_system"/>
     <menuitem id="menu_envia_settings" name="Settings" parent="menu_envia_configuration"

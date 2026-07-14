@@ -1,6 +1,7 @@
 import logging
 
 from odoo.tools import config
+from psycopg2 import sql
 
 from .services.envia_plugin_setup import queue_pending_setup
 
@@ -8,6 +9,13 @@ _logger = logging.getLogger(__name__)
 LEGACY_MODULE_NAME = "envia_shipping"
 MODULE_NAME = "envia"
 HTTP_BRIDGE_MODULE = "envia_http"
+_ENVIA_PRODUCT_TEMPLATE_FIELDS = (
+    "dimensional_uom_id",
+    "product_length",
+    "product_width",
+    "product_height",
+    "envia_volumetric_weight",
+)
 
 
 def _http_bridge_server_wide_modules():
@@ -51,10 +59,78 @@ def _drop_legacy_branch_carrier_columns(cr):
         )
 
 
+def _cleanup_envia_product_dimension_artifacts(cr):
+    """Drop legacy envia dimension views/fields left after removing product_template.py."""
+    cr.execute(
+        """
+        DELETE FROM ir_ui_view v
+         WHERE v.model = 'product.template'
+           AND (
+               v.arch_db::text LIKE '%%dimensional_uom_id%%'
+               OR v.arch_db::text LIKE '%%envia_shipping%%'
+               OR v.arch_db::text LIKE '%%envia_volumetric_weight%%'
+           )
+           AND (
+               EXISTS (
+                   SELECT 1
+                     FROM ir_model_data imd
+                    WHERE imd.model = 'ir.ui.view'
+                      AND imd.res_id = v.id
+                      AND imd.module = %s
+               )
+               OR NOT EXISTS (
+                   SELECT 1
+                     FROM ir_model_data imd
+                    WHERE imd.model = 'ir.ui.view'
+                      AND imd.res_id = v.id
+               )
+           )
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM ir_model_data imd
+                WHERE imd.model = 'ir.ui.view'
+                  AND imd.res_id = v.id
+                  AND imd.module = 'product_dimension'
+           )
+        """,
+        (MODULE_NAME,),
+    )
+    for field_name in _ENVIA_PRODUCT_TEMPLATE_FIELDS:
+        cr.execute(
+            """
+            SELECT f.id
+              FROM ir_model_fields f
+              JOIN ir_model m ON m.id = f.model_id
+              JOIN ir_model_data imd
+                ON imd.model = 'ir.model.fields'
+               AND imd.res_id = f.id
+             WHERE m.model = 'product.template'
+               AND f.name = %s
+               AND imd.module = %s
+            """,
+            (field_name, MODULE_NAME),
+        )
+        row = cr.fetchone()
+        if not row:
+            continue
+        field_id = row[0]
+        cr.execute(
+            "DELETE FROM ir_model_data WHERE model = 'ir.model.fields' AND res_id = %s",
+            (field_id,),
+        )
+        cr.execute("DELETE FROM ir_model_fields WHERE id = %s", (field_id,))
+        cr.execute(
+            sql.SQL("ALTER TABLE product_template DROP COLUMN IF EXISTS {}").format(
+                sql.Identifier(field_name)
+            )
+        )
+
+
 def pre_init_hook(env):
     """Rename a legacy envia_shipping installation to envia before module load."""
     cr = env.cr
     _drop_legacy_branch_carrier_columns(cr)
+    _cleanup_envia_product_dimension_artifacts(cr)
     cr.execute(
         """
         UPDATE ir_model_data
@@ -163,11 +239,13 @@ def load_envia_demo_data(env):
             "email": origin_partner.email or "malcom.prado@envia.com",
         }
     )
+    warehouse = env["stock.warehouse"].search([("company_id", "=", company.id)], limit=1)
     company.write(
         {
             "country_id": mexico.id,
-            "envia_default_origin_partner_id": origin_partner.id,
+            "envia_default_origin_warehouse_id": warehouse.id if warehouse else False,
             "envia_environment": "sandbox",
+            "envia_default_carrier": True,
         }
     )
 
@@ -233,8 +311,129 @@ def load_envia_demo_data(env):
     order.action_confirm()
 
 
+def _envia_installed_spanish_langs(cr) -> list[str]:
+    cr.execute(
+        """
+        SELECT code
+          FROM res_lang
+         WHERE active = TRUE
+           AND code LIKE 'es%%'
+        """
+    )
+    return [row[0] for row in cr.fetchall()]
+
+
+def _sync_envia_settings_field_translations(cr):
+    """Odoo 19 stores field labels in ir_model_fields JSON; sync Spanish langs on upgrade."""
+    labels = {
+        "envia_default_carrier": (
+            "Usar Envia como método de envío predeterminado",
+            "Preselecciona Envia.com al agregar envío en pedidos de venta.",
+        ),
+        "envia_enable_branches": (
+            "Habilitar sucursales",
+            "Permite rutas con sucursal al cotizar. Si está desactivado, solo hay entrega a domicilio.",
+        ),
+    }
+    for lang in _envia_installed_spanish_langs(cr):
+        for field_name, (es_label, es_help) in labels.items():
+            cr.execute(
+                """
+                UPDATE ir_model_fields f
+                   SET field_description = jsonb_set(
+                           COALESCE(f.field_description, '{}'::jsonb),
+                           ARRAY[%(lang)s],
+                           to_jsonb(%(es_label)s::text)
+                       ),
+                       help = jsonb_set(
+                           COALESCE(f.help, '{}'::jsonb),
+                           ARRAY[%(lang)s],
+                           to_jsonb(%(es_help)s::text)
+                       )
+                 FROM ir_model m
+                WHERE f.model_id = m.id
+                  AND m.model IN ('res.company', 'res.config.settings')
+                  AND f.name = %(field_name)s
+                """,
+                {
+                    "field_name": field_name,
+                    "lang": lang,
+                    "es_label": es_label,
+                    "es_help": es_help,
+                },
+            )
+
+
+def _envia_settings_view_terms_es() -> dict[str, str]:
+    return {
+        "Allow branch routes when quoting. When disabled, only home delivery is available.": (
+            "Permite rutas con sucursal al cotizar. Si está desactivado, solo hay entrega a domicilio."
+        ),
+        "API key Envia.com uses to call back into Odoo. Generate it here and copy it into your Envia.com integration setup.": (
+            "Clave API que Envia.com usa para llamar a Odoo. Genérala aquí y cópiala en la "
+            "configuración de integración de Envia.com."
+        ),
+        "Bearer token for api.envia.com (quoting, labels, tracking). Saved automatically by Envia.com during integration.": (
+            "Token Bearer para api.envia.com (cotización, etiquetas, rastreo). Se guarda automáticamente "
+            "durante la integración con Envia.com."
+        ),
+        "Carriers requested when quoting all Envia rates.": (
+            "Transportistas solicitados al cotizar todas las tarifas de Envia."
+        ),
+        "Connect your store with Envia.com. Only administrators can refresh the integration token.": (
+            "Conecta tu tienda con Envia.com. Solo los administradores pueden actualizar el token de integración."
+        ),
+        "Connected": "Conectado",
+        "Connection": "Conexión",
+        "Default carriers": "Transportistas predeterminados",
+        "Default origin and carriers used when quoting from sales orders and Add shipping.": (
+            "Origen y transportistas predeterminados al cotizar desde pedidos de venta y Agregar envío."
+        ),
+        "Default ship-from address": "Dirección de origen predeterminada",
+        "Enable branch pickup and delivery": "Habilitar sucursales",
+        "Envia shipping token": "Token de envío Envia",
+        "Generate a key to configure the Envia.com callback.": (
+            "Genera una clave para configurar el callback de Envia.com."
+        ),
+        "Generate API key": "Generar clave API",
+        "Link your Odoo store with Envia.com and manage integration credentials.": (
+            "Vincula tu tienda Odoo con Envia.com y gestiona las credenciales de integración."
+        ),
+        "Module": "Módulo",
+        "No token stored yet. Complete the Envia.com connection or wait for the integration callback.": (
+            "Aún no hay token guardado. Completa la conexión con Envia.com o espera el callback de integración."
+        ),
+        "Not connected": "No conectado",
+        "Odoo API key": "Clave API de Odoo",
+        "Origin for Envia quotes. Must include street, city, postal code, country, phone and email. Destination comes from the customer delivery address on the order.": (
+            "Origen para cotizaciones Envia. Debe incluir calle, ciudad, código postal, país, teléfono y "
+            "correo. El destino proviene de la dirección de entrega del cliente en el pedido."
+        ),
+        "Plugin": "Plugin",
+        "Pre-select Envia.com in Add shipping on sale orders.": (
+            "Preselecciona Envia.com al agregar envío en pedidos de venta."
+        ),
+        "Refresh token": "Actualizar token",
+        "Shipping defaults": "Valores predeterminados de envío",
+        "Test connection": "Probar conexión",
+        "Use Envia as default shipping method": "Usar Envia como método de envío predeterminado",
+    }
+
+
+def _sync_envia_settings_view_translations(env) -> None:
+    """Odoo 19: push settings view terms directly; the main es_419.po is too large to import reliably."""
+    view = env.ref("envia.res_config_settings_view_form_envia", raise_if_not_found=False)
+    if not view:
+        return
+    terms_es = _envia_settings_view_terms_es()
+    for lang in _envia_installed_spanish_langs(env.cr):
+        view.update_field_translations("arch_db", {lang: terms_es})
+
+
 def post_init_hook(env):
     warn_if_http_bridge_missing(at_install=True)
+    _sync_envia_settings_field_translations(env.cr)
+    _sync_envia_settings_view_translations(env)
     load_envia_demo_data(env)
     company = env.ref("base.main_company")
     if not company._envia_is_shipping_api_configured():

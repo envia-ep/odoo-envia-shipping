@@ -3,6 +3,7 @@ from __future__ import annotations
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
+from ..services.envia_config import oauth_registration_sandbox
 from ..services.envia_oauth_client import (
     EnviaOauthClient,
     build_integration_popup_url,
@@ -151,11 +152,12 @@ class EnviaPluginConnectWizard(models.TransientModel):
         if not self.company_id._envia_is_shipping_api_configured():
             return False
         self._mark_integration_success_from_callback()
-        return self._get_open_action(self)
+        return self._get_envia_settings_action()
 
     def _mark_integration_success_from_callback(self) -> None:
         self.ensure_one()
         clear_pending_setup(self.env)
+        self.company_id.envia_quote_onboarding_pending = False
         self.company_id.write(
             {
                 "envia_oauth_connected": True,
@@ -213,6 +215,12 @@ class EnviaPluginConnectWizard(models.TransientModel):
             return wizard
         return self._get_open_action(wizard, target=target, name=name)
 
+    @api.model
+    def _get_envia_settings_action(self):
+        if not self._is_envia_connect_admin():
+            return self._get_admin_required_notification_action()
+        return self.env["ir.actions.act_window"]._for_xml_id("envia.action_envia_config_settings")
+
     def _build_integration_popup_url(self) -> str:
         self.ensure_one()
         api_key = (self.api_key or "").strip()
@@ -246,7 +254,9 @@ class EnviaPluginConnectWizard(models.TransientModel):
         if not self._is_envia_connect_admin():
             return self._get_admin_required_notification_action()
         self._run_oauth_integration_flow()
-        return self._get_open_action(self)
+        if self.state == "error":
+            return self._get_open_action(self)
+        return self._get_envia_settings_action()
 
     def action_return_to_connect_screen(self):
         self.ensure_one()
@@ -259,14 +269,7 @@ class EnviaPluginConnectWizard(models.TransientModel):
 
     def action_go_to_plugin_settings(self):
         self.ensure_one()
-        if not self._is_envia_connect_admin():
-            return self._get_admin_required_notification_action()
-        action = self.env["ir.actions.act_window"]._for_xml_id("envia.action_envia_config_settings")
-        return action
-
-    def action_go_to_quotes(self):
-        self.ensure_one()
-        return self.env["envia.plugin.connect.wizard"]._get_quotes_action()
+        return self._get_envia_settings_action()
 
     def action_redirect_if_configured(self):
         self.ensure_one()
@@ -275,7 +278,8 @@ class EnviaPluginConnectWizard(models.TransientModel):
         if not company._envia_is_shipping_api_configured():
             return False
         clear_pending_setup(self.env)
-        return self.env["envia.quote.onboarding.wizard"].get_entry_action()
+        company.envia_quote_onboarding_pending = False
+        return self._get_envia_settings_action()
 
     def _commit_for_external_oauth_validation(self) -> None:
         """Persist the API key before Envia validates it against this Odoo instance."""
@@ -298,7 +302,7 @@ class EnviaPluginConnectWizard(models.TransientModel):
             database=self.database_name,
             email=self.user_email,
             api_key=api_key,
-            sandbox=False,
+            sandbox=oauth_registration_sandbox(),
         )
         if not client.verify_integration():
             raise UserError(_("Envia integration verification failed. The test endpoint did not return success."))
@@ -382,6 +386,7 @@ class EnviaPluginConnectWizard(models.TransientModel):
             access_token=access_token,
         )
         clear_pending_setup(self.env)
+        self.company_id.envia_quote_onboarding_pending = False
 
         plugin_version = False
         if access_token:
@@ -501,12 +506,25 @@ class EnviaPluginConnectWizard(models.TransientModel):
             }
         )
 
-    def action_refresh_token(self):
+    def _get_stored_integration_credentials(self) -> dict:
         self.ensure_one()
-        if not self._is_envia_connect_admin():
-            return self._get_admin_required_notification_action()
+        api_key = (self.company_id.envia_integration_api_key or "").strip()
+        if not api_key:
+            raise UserError(
+                _("Generate the Odoo API key for Envia.com in Settings before refreshing the token.")
+            )
+        base_url = self.env["ir.config_parameter"].sudo().get_param("web.base.url", "").rstrip("/")
+        return {
+            "store_url": base_url,
+            "database_name": self.env.cr.dbname,
+            "user_email": self.env.user.login,
+            "api_key": api_key,
+            "user_id": self.env.user.id,
+        }
 
-        credentials = generate_integration_credentials(self.env, self.company_id)
+    def _open_external_integration_popup(self):
+        self.ensure_one()
+        credentials = self._get_stored_integration_credentials()
         self.write(
             {
                 "store_url": credentials["store_url"],
@@ -515,10 +533,36 @@ class EnviaPluginConnectWizard(models.TransientModel):
                 "api_key": credentials["api_key"],
                 "user_id": credentials["user_id"],
                 "sandbox_value": "false",
+                "integration_message": False,
             }
         )
-        self._run_oauth_integration_flow()
-        return self._get_open_action(self)
+        self._commit_for_external_oauth_validation()
+        popup_url = self._build_integration_popup_url()
+        self.write(
+            {
+                "state": "waiting_external",
+                "external_popup_url": popup_url,
+            }
+        )
+
+    def action_refresh_token(self):
+        self.ensure_one()
+        if not self._is_envia_connect_admin():
+            return self._get_admin_required_notification_action()
+        self._open_external_integration_popup()
+        return False
+
+    @api.model
+    def action_open_refresh_integration_wizard(self, company):
+        if not self._is_envia_connect_admin():
+            return self._get_admin_required_notification_action()
+        wizard = self._create_connected_wizard(company)
+        wizard._open_external_integration_popup()
+        return self._get_open_action(
+            wizard,
+            target="new",
+            name=_("Refresh Envia.com connection"),
+        )
 
     def action_retry_integration(self):
         self.ensure_one()
@@ -539,7 +583,10 @@ class EnviaPluginConnectWizard(models.TransientModel):
         company._envia_try_sync_shipping_api_token_from_oauth()
         if company._envia_is_shipping_api_configured():
             clear_pending_setup(self.env)
-            return self.env["envia.quote.onboarding.wizard"].get_entry_action()
+            company.envia_quote_onboarding_pending = False
+            if self._is_envia_connect_admin():
+                return self._get_envia_settings_action()
+            return self._get_quotes_list_action()
         wizard = self.create_wizard_for_company(company)
         if isinstance(wizard, dict):
             return wizard
@@ -554,16 +601,15 @@ class EnviaPluginConnectWizard(models.TransientModel):
         return self.env.ref("envia.action_envia_quote").read()[0]
 
     @api.model
-    def _get_quotes_action(self):
-        return self.env["envia.quote.onboarding.wizard"].get_entry_action()
-
-    @api.model
     def action_envia_app_entry(self):
         company = self.env.company
         company._envia_try_sync_shipping_api_token_from_oauth()
         if company._envia_is_shipping_api_configured():
             clear_pending_setup(self.env)
-            return self.env["envia.quote.onboarding.wizard"].get_entry_action()
+            company.envia_quote_onboarding_pending = False
+            if self._is_envia_connect_admin():
+                return self._get_envia_settings_action()
+            return self._get_quotes_list_action()
 
         if not self._is_envia_connect_admin():
             if get_pending_setup_company_id(self.env):
@@ -579,13 +625,9 @@ class EnviaPluginConnectWizard(models.TransientModel):
             return self._get_admin_required_notification_action()
         company = self.env.company
         company._envia_try_sync_shipping_api_token_from_oauth()
-        if company._envia_is_shipping_api_configured():
+        if company._envia_is_shipping_api_configured() or company.envia_oauth_connected:
             clear_pending_setup(self.env)
-            wizard = self._create_connected_wizard(company)
-            return self._get_open_action(wizard)
-        if company.envia_oauth_connected:
-            wizard = self._create_connected_wizard(company)
-            return self._get_open_action(wizard)
+            return self._get_envia_settings_action()
         wizard = self.create_wizard_for_company(company)
         if isinstance(wizard, dict):
             return wizard

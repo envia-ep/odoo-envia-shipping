@@ -3,9 +3,18 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from ..hooks import load_envia_demo_data
+from ..services.envia_config import (
+    get_envia_api_base_url,
+    get_envia_environment_from_config,
+    get_envia_queries_base_url,
+    is_envia_sandbox,
+    resolve_envia_environment,
+)
 from ..services.envia_oauth_client import EnviaOauthClient
 from ..services.envia_plugin_setup import (
+    bind_integration_database,
     clear_pending_setup,
+    generate_integration_credentials,
     get_envia_module_version,
     normalize_envia_plugin_version,
 )
@@ -20,15 +29,19 @@ class ResCompany(models.Model):
             ("production", "Production"),
         ],
         string="Envia Environment",
-        default="sandbox",
+        default=lambda self: self._default_envia_environment(),
     )
+
+    @api.model
+    def _default_envia_environment(self):
+        return get_envia_environment_from_config(self.env) or False
     envia_api_token = fields.Char(string="Envia API Token")
     envia_base_url = fields.Char(
         string="Envia Base URL",
         help="Leave empty to use the default URL for the selected environment.",
     )
     envia_default_carriers = fields.Char(
-        string="Default Carriers",
+        string="Default Carrier Codes",
         default="dhl,fedex,estafeta",
         help="Comma-separated carrier codes used when quoting all carriers.",
     )
@@ -55,9 +68,65 @@ class ResCompany(models.Model):
         if not carriers_value:
             return []
         return [code.strip() for code in str(carriers_value).split(",") if code.strip()]
+    envia_default_origin_warehouse_id = fields.Many2one(
+        "stock.warehouse",
+        string="Default Origin Warehouse",
+        check_company=True,
+    )
     envia_default_origin_partner_id = fields.Many2one(
         "res.partner",
         string="Default Origin Contact",
+        help="Legacy fallback when no origin warehouse is set.",
+    )
+
+    def _envia_get_default_origin_partner(self):
+        self.ensure_one()
+        warehouse = self.envia_default_origin_warehouse_id
+        if warehouse and warehouse.partner_id:
+            return warehouse.partner_id
+        if self.envia_default_origin_partner_id:
+            return self.envia_default_origin_partner_id
+        return self.partner_id
+
+    @api.model
+    def _envia_format_address_preview(self, partner):
+        if not partner:
+            return False
+        parts = [
+            partner.street,
+            partner.street2,
+            " ".join(filter(None, [partner.zip, partner.city])),
+            ", ".join(
+                filter(
+                    None,
+                    [
+                        partner.state_id.name if partner.state_id else False,
+                        partner.country_id.name if partner.country_id else False,
+                    ],
+                )
+            ),
+        ]
+        preview = "\n".join(filter(None, [partner.display_name, *parts]))
+        return preview or _("No address saved on this contact yet.")
+    envia_enable_branches = fields.Boolean(
+        string="Enable branch pickup and delivery",
+        default=True,
+        help="Allow origin/destination branch (pickup and drop-off at carrier branches). When disabled, only home delivery routes are available.",
+    )
+    envia_default_carrier = fields.Boolean(
+        string="Use Envia as default shipping method",
+        default=False,
+        help="Pre-select Envia.com in Add shipping on sale orders.",
+    )
+    envia_enable_labels = fields.Boolean(
+        string="Enable Label Generation",
+        default=False,
+        help="Show Generate Label actions on quotes, pickings, and the quote wizard.",
+    )
+    envia_show_quote_archive = fields.Boolean(
+        string="Show Quote Archive",
+        default=False,
+        help="Show the Quotes menu, quote smart buttons, and available rates on saved quotes.",
     )
     envia_label_format = fields.Selection(
         [
@@ -114,6 +183,12 @@ class ResCompany(models.Model):
         readonly=True,
         copy=False,
         help="Store identifier assigned by Envia.com during plugin integration.",
+    )
+    envia_company_id = fields.Char(
+        string="Envia Company ID",
+        readonly=True,
+        copy=False,
+        help="Company identifier assigned by Envia.com during plugin integration.",
     )
     envia_plugin_version_display = fields.Char(
         string="Envia Plugin Version Display",
@@ -183,23 +258,15 @@ class ResCompany(models.Model):
 
     def _envia_is_shipping_api_configured(self) -> bool:
         self.ensure_one()
-        self.env.cr.execute(
-            """
-            SELECT COALESCE(TRIM(envia_api_token), '')
-              FROM res_company
-             WHERE id = %s
-            """,
-            (self.id,),
-        )
-        row = self.env.cr.fetchone()
-        return bool(row and row[0])
+        return bool((self.envia_api_token or "").strip())
 
     def _envia_try_sync_shipping_api_token_from_oauth(self) -> bool:
         self.ensure_one()
         if self._envia_is_shipping_api_configured():
             return True
 
-        oauth_token = (self.envia_oauth_access_token or "").strip()
+        company = self.sudo()
+        oauth_token = (company.envia_oauth_access_token or "").strip()
         if not oauth_token:
             return False
 
@@ -212,7 +279,8 @@ class ResCompany(models.Model):
         if not shipping_token:
             return False
 
-        self.envia_api_token = shipping_token
+        company.write({"envia_api_token": shipping_token})
+        self.env.flush_all()
         return True
 
     def _envia_apply_integration_callback_success(
@@ -220,6 +288,7 @@ class ResCompany(models.Model):
         *,
         hash_token: str,
         shop_id: str,
+        envia_company_id: str | int | None = None,
         api_key: str | None = None,
     ) -> dict:
         """Persist a successful Envia integration callback.
@@ -232,6 +301,7 @@ class ResCompany(models.Model):
             "envia_api_token": hash_token,
             "envia_oauth_last_error": False,
             "envia_shop_id": shop_id or False,
+            "envia_company_id": str(envia_company_id).strip() if envia_company_id else False,
         }
         if api_key:
             company_vals["envia_integration_api_key"] = api_key
@@ -251,6 +321,7 @@ class ResCompany(models.Model):
                 "envia_oauth_connected": False,
                 "envia_api_token": False,
                 "envia_shop_id": False,
+                "envia_company_id": False,
                 "envia_oauth_last_error": error_message,
             }
         )
@@ -261,19 +332,41 @@ class ResCompany(models.Model):
             "message": error_message,
         }
 
+    def _envia_get_effective_environment(self) -> str:
+        self.ensure_one()
+        return resolve_envia_environment(self)
+
+    def _envia_is_sandbox(self) -> bool:
+        self.ensure_one()
+        return is_envia_sandbox(self)
+
     def _envia_get_base_url(self) -> str:
         self.ensure_one()
-        if self.envia_base_url:
-            return self.envia_base_url.rstrip("/") + "/"
-        if self.envia_environment == "production":
-            return "https://api.envia.com/"
-        return "https://api-test.envia.com/"
+        return get_envia_api_base_url(self)
 
     def _envia_get_queries_base_url(self) -> str:
         self.ensure_one()
-        if self.envia_environment == "production":
-            return "https://queries.envia.com/"
-        return "https://queries-test.envia.com/"
+        return get_envia_queries_base_url(self)
+
+    def _envia_integration_api_key_is_valid(self, api_key: str | None = None) -> bool:
+        from ..services.envia_integration_callback import validate_envia_store_credentials
+
+        self.ensure_one()
+        key = (api_key or self.envia_integration_api_key or "").strip()
+        if not key:
+            return False
+        return bool(validate_envia_store_credentials(self.env.cr.dbname, key))
+
+    def _envia_ensure_valid_integration_api_key(self, user=None) -> str:
+        self.ensure_one()
+        user = user or self.env.user
+        api_key = (self.envia_integration_api_key or "").strip()
+        if api_key and self._envia_integration_api_key_is_valid(api_key):
+            bind_integration_database(self.env, api_key, user=user)
+            return api_key
+        credentials = generate_integration_credentials(self.env, self, user=user)
+        self.sudo().write({"envia_integration_api_key": credentials["api_key"]})
+        return credentials["api_key"]
 
     def _envia_default_branch_carrier(self) -> str:
         self.ensure_one()

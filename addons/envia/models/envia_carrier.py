@@ -16,6 +16,7 @@ class EnviaCarrier(models.Model):
         help="Comma-separated ISO country codes where this carrier is commonly available.",
     )
 
-    _sql_constraints = [
-        ("envia_carrier_code_unique", "unique(code)", "Carrier code must be unique."),
-    ]
+    _envia_carrier_code_unique = models.Constraint(
+        "unique(code)",
+        "Carrier code must be unique.",
+    )

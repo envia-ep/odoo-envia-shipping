@@ -62,6 +62,9 @@ export class EnviaPluginConnectWizardController extends FormController {
     }
 
     _startWaitingExternalFlow(record) {
+        if (!this._integrationUrlOpened && record.data.external_popup_url) {
+            this._openEnviaIntegrationFromRecord();
+        }
         if (!this._integrationUrlOpened) {
             this._notifyEnviaNotOpened();
         }

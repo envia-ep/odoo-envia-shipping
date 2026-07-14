@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<odoo>
+<odoo noupdate="1">
     <!-- Origin: complete My Company for domestic MX sandbox quoting (67192 NLE -> 03100 CMX). -->
     <record id="base.main_partner" model="res.partner">
         <field name="street">Aurora Boreal 301</field>
@@ -13,8 +13,9 @@
 
     <record id="base.main_company" model="res.company">
         <field name="country_id" ref="base.mx"/>
-        <field name="envia_default_origin_partner_id" ref="base.main_partner"/>
+        <field name="envia_default_origin_warehouse_id" ref="stock.warehouse0"/>
         <field name="envia_environment">sandbox</field>
+        <field name="envia_default_carrier">True</field>
         <field name="envia_default_carriers">dhl,fedex,estafeta</field>
     </record>
 
