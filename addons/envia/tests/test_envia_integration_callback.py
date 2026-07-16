@@ -91,6 +91,7 @@ class TestEnviaIntegrationCallbackParsing(TransactionCase):
         self.assertIsNone(payload.database)
 
     def test_is_success_status(self):
+        self.assertTrue(is_success_status("active"))
         self.assertTrue(is_success_status("success"))
         self.assertFalse(is_success_status("error"))
 
@@ -125,7 +126,7 @@ class TestEnviaIntegrationCallbackService(TransactionCase):
             hash="envia-shipping-api-token-xyz",
             shop="shop-456",
             company=5592,
-            user=self.env.user.id,
+            user=5430,
             api_key=self.credentials["api_key"],
             database=self.env.cr.dbname,
             message=None,
@@ -140,7 +141,29 @@ class TestEnviaIntegrationCallbackService(TransactionCase):
         self.assertEqual(company.envia_api_token, "envia-shipping-api-token-xyz")
         self.assertEqual(company.envia_shop_id, "shop-456")
         self.assertEqual(company.envia_company_id, "5592")
+        self.assertEqual(company.envia_user_id, "5430")
         self.assertEqual(company.envia_integration_api_key, self.credentials["api_key"])
+
+    def test_apply_integration_callback_accepts_envia_user_different_from_odoo_user(self):
+        """Connect ``user`` is Envia's user id — must not match res.users."""
+        self.assertNotEqual(self.env.user.id, 5430)
+        payload = EnviaIntegrationCallbackPayload(
+            status="success",
+            hash="envia-shipping-api-token-xyz",
+            shop="shop-456",
+            company=5592,
+            user=5430,
+            api_key=self.credentials["api_key"],
+            database=self.env.cr.dbname,
+            message=None,
+        )
+        result = apply_integration_callback(
+            self.env(user=self.env.user),
+            payload,
+            resolved_database=self.env.cr.dbname,
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.env.company.envia_user_id, "5430")
 
     def test_apply_integration_callback_resolves_company_from_pending_setup(self):
         queue_pending_setup(self.env, self.env.company)

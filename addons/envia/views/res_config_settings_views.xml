@@ -52,6 +52,13 @@
                                                class="oe_inline"/>
                                     </span>
                                     <span class="o_envia_settings_version_chip">
+                                        <span class="o_envia_settings_version_label">User ID</span>
+                                        <field name="envia_user_id_display"
+                                               nolabel="1"
+                                               readonly="1"
+                                               class="oe_inline"/>
+                                    </span>
+                                    <span class="o_envia_settings_version_chip">
                                         <span class="o_envia_settings_version_label">Odoo</span>
                                         <field name="envia_odoo_version_display"
                                                nolabel="1"

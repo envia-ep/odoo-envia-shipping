@@ -10,7 +10,89 @@ import { useEffect } from "@odoo/owl";
 const ENVIA_POPUP_WINDOW_NAME = "envia_oauth_connect";
 const POPUP_WIDTH = 320;
 const POPUP_HEIGHT = 260;
-const CALLBACK_POLL_INTERVAL_MS = 2000;
+const POPUP_CLOSED_WATCH_MS = 500;
+// After close: Envia callback may commit a moment later.
+const VERIFY_AFTER_CLOSE_ATTEMPTS = 6;
+const VERIFY_AFTER_CLOSE_DELAY_MS = 1000;
+
+/**
+ * Survives FormController remount after action_run_integration writes state.
+ * Close detection must live here — instance fields are wiped on reload.
+ */
+const sharedEnviaPopup = {
+    window: null,
+    watchTimer: null,
+    wizardId: null,
+    orm: null,
+    actionService: null,
+    loadRecord: null,
+    verifying: false,
+};
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function stopSharedCloseWatch() {
+    if (sharedEnviaPopup.watchTimer) {
+        clearInterval(sharedEnviaPopup.watchTimer);
+        sharedEnviaPopup.watchTimer = null;
+    }
+}
+
+async function verifyAfterSharedPopupClosed() {
+    const wizardId = sharedEnviaPopup.wizardId;
+    const orm = sharedEnviaPopup.orm;
+    const actionService = sharedEnviaPopup.actionService;
+    if (sharedEnviaPopup.verifying || !wizardId || !orm || !actionService) {
+        return;
+    }
+    sharedEnviaPopup.verifying = true;
+    stopSharedCloseWatch();
+    try {
+        for (let attempt = 0; attempt < VERIFY_AFTER_CLOSE_ATTEMPTS; attempt++) {
+            if (attempt > 0) {
+                await delay(VERIFY_AFTER_CLOSE_DELAY_MS);
+            }
+            const nextAction = await orm.call(
+                "envia.plugin.connect.wizard",
+                "action_poll_integration_status",
+                [[wizardId]]
+            );
+            if (nextAction && nextAction.type) {
+                await actionService.doAction(nextAction);
+                return;
+            }
+        }
+        const cancelAction = await orm.call(
+            "envia.plugin.connect.wizard",
+            "action_on_external_popup_closed",
+            [[wizardId]]
+        );
+        if (cancelAction && cancelAction.type) {
+            await actionService.doAction(cancelAction);
+        } else if (sharedEnviaPopup.loadRecord) {
+            await sharedEnviaPopup.loadRecord();
+        }
+    } finally {
+        sharedEnviaPopup.verifying = false;
+    }
+}
+
+function startSharedCloseWatch() {
+    if (sharedEnviaPopup.watchTimer) {
+        return;
+    }
+    sharedEnviaPopup.watchTimer = setInterval(() => {
+        const popup = sharedEnviaPopup.window;
+        if (!popup || !popup.closed) {
+            return;
+        }
+        stopSharedCloseWatch();
+        sharedEnviaPopup.window = null;
+        verifyAfterSharedPopupClosed();
+    }, POPUP_CLOSED_WATCH_MS);
+}
 
 export class EnviaPluginConnectWizardController extends FormController {
     setup() {
@@ -18,20 +100,17 @@ export class EnviaPluginConnectWizardController extends FormController {
         this.orm = useService("orm");
         this.notification = useService("notification");
         this.actionService = useService("action");
-        this._callbackPollInterval = null;
-        this._integrationUrlOpened = false;
 
         useEffect(
             () => {
                 const record = this.model.root;
-                if (record.data.state === "waiting_external") {
-                    this._startWaitingExternalFlow(record);
-                } else {
-                    this._stopWaitingExternalFlow();
+                this._syncSharedServices(record.resId);
+                if (record.data.state !== "waiting_external") {
+                    return;
                 }
-                return () => this._stopWaitingExternalFlow();
+                this._ensureCloseWatchFromSharedPopup(record);
             },
-            () => [this.model.root.data.state, this.model.root.data.external_popup_url]
+            () => [this.model.root.data.state, this.model.root.resId]
         );
     }
 
@@ -61,20 +140,32 @@ export class EnviaPluginConnectWizardController extends FormController {
         }
     }
 
-    _startWaitingExternalFlow(record) {
-        if (!this._integrationUrlOpened && record.data.external_popup_url) {
-            this._openEnviaIntegrationFromRecord();
+    _syncSharedServices(wizardId) {
+        sharedEnviaPopup.orm = this.orm;
+        sharedEnviaPopup.actionService = this.actionService;
+        sharedEnviaPopup.loadRecord = () => this.model.root.load();
+        if (wizardId) {
+            sharedEnviaPopup.wizardId = wizardId;
         }
-        if (!this._integrationUrlOpened) {
-            this._notifyEnviaNotOpened();
-        }
-        this._startCallbackPolling(record.resId);
     }
 
-    _stopWaitingExternalFlow() {
-        if (this._callbackPollInterval) {
-            clearInterval(this._callbackPollInterval);
-            this._callbackPollInterval = null;
+    _ensureCloseWatchFromSharedPopup(record) {
+        const popup = sharedEnviaPopup.window;
+        if (popup) {
+            if (popup.closed) {
+                sharedEnviaPopup.window = null;
+                stopSharedCloseWatch();
+                verifyAfterSharedPopupClosed();
+                return;
+            }
+            startSharedCloseWatch();
+            return;
+        }
+        if (record.data.external_popup_url) {
+            this._openEnviaIntegrationFromRecord();
+            if (!sharedEnviaPopup.window) {
+                this._notifyEnviaNotOpened();
+            }
         }
     }
 
@@ -111,42 +202,16 @@ export class EnviaPluginConnectWizardController extends FormController {
         if (!url) {
             return;
         }
-        if (record.data.integration_use_sized_popup) {
-            this._openSizedPopup(url);
-            return;
-        }
-        this.actionService.doAction({
-            type: "ir.actions.act_url",
-            url,
-            target: "new",
-        });
-        this._integrationUrlOpened = true;
-    }
-
-    _openSizedPopup(url) {
-        const popup = window.open(url, ENVIA_POPUP_WINDOW_NAME, this._buildPopupFeatures());
+        this._syncSharedServices(record.resId);
+        // window.open (not act_url): only then can we read popup.closed.
+        const features = record.data.integration_use_sized_popup ? this._buildPopupFeatures() : "";
+        const popup = window.open(url, ENVIA_POPUP_WINDOW_NAME, features);
         if (!popup) {
             this._notifyEnviaNotOpened();
             return;
         }
-        this._integrationUrlOpened = true;
-    }
-
-    _startCallbackPolling(wizardId) {
-        if (this._callbackPollInterval) {
-            return;
-        }
-        this._callbackPollInterval = setInterval(async () => {
-            const nextAction = await this.orm.call(
-                "envia.plugin.connect.wizard",
-                "action_poll_integration_status",
-                [[wizardId]]
-            );
-            if (nextAction && nextAction.type) {
-                this._stopWaitingExternalFlow();
-                await this.actionService.doAction(nextAction);
-            }
-        }, CALLBACK_POLL_INTERVAL_MS);
+        sharedEnviaPopup.window = popup;
+        startSharedCloseWatch();
     }
 }
 

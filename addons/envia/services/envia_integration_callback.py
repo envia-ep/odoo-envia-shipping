@@ -10,7 +10,7 @@ from .envia_plugin_setup import get_pending_setup_company_id, lookup_integration
 
 CALLBACK_ROUTE = "/envia/integration/callback"
 CONNECT_ROUTE = "/envia/integration/connect"
-SUCCESS_STATUSES = frozenset({"success", "ok", "connected"})
+SUCCESS_STATUSES = frozenset({"active", "success", "ok", "connected"})
 ODOO_API_KEY_FIELD_NAMES = ("apiKey", "api_key", "odoo_api_key")
 ODOO_DATABASE_FIELD_NAMES = ("database", "db")
 
@@ -104,7 +104,7 @@ class EnviaIntegrationCallbackPayload:
     hash: str  # Envia shipping API token (api.envia.com Bearer)
     shop: str
     company: int  # Envia.com company id (stored on res.company.envia_company_id)
-    user: int
+    user: int  # Envia.com user id (stored on res.company.envia_user_id)
     api_key: str  # Odoo API key generated when connecting with Envia.com
     database: str | None = None  # Optional; resolved from the request when omitted
     message: str | None = None
@@ -674,13 +674,6 @@ def apply_integration_callback(
             http_status=403,
         )
 
-    if env.user.id != payload.user:
-        raise EnviaIntegrationCallbackError(
-            "user_mismatch",
-            _("Integration callback user does not match the authenticated Odoo API key user."),
-            http_status=403,
-        )
-
     company = _resolve_integration_callback_company(env, payload)
     if not company:
         raise EnviaIntegrationCallbackError(
@@ -699,6 +692,7 @@ def apply_integration_callback(
             hash_token=payload.hash,
             shop_id=payload.shop,
             envia_company_id=payload.company,
+            envia_user_id=payload.user,
             api_key=payload.api_key,
         )
 

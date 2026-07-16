@@ -134,6 +134,11 @@ class ResConfigSettings(models.TransientModel):
         compute="_compute_envia_integration_identity_display",
         readonly=True,
     )
+    envia_user_id_display = fields.Char(
+        string="User ID",
+        compute="_compute_envia_integration_identity_display",
+        readonly=True,
+    )
     envia_odoo_version_display = fields.Char(
         string="Odoo Version",
         compute="_compute_envia_integration_identity_display",
@@ -181,7 +186,12 @@ class ResConfigSettings(models.TransientModel):
         for record in self:
             record.envia_integration_database_name = get_integration_database_name(record.env)
 
-    @api.depends("company_id", "company_id.envia_shop_id", "company_id.envia_company_id")
+    @api.depends(
+        "company_id",
+        "company_id.envia_shop_id",
+        "company_id.envia_company_id",
+        "company_id.envia_user_id",
+    )
     def _compute_envia_integration_identity_display(self) -> None:
         import odoo.release as release
 
@@ -190,6 +200,7 @@ class ResConfigSettings(models.TransientModel):
             company = record.company_id
             record.envia_company_id_display = (company.envia_company_id or "").strip() or "—"
             record.envia_shop_id_display = (company.envia_shop_id or "").strip() or "—"
+            record.envia_user_id_display = (company.envia_user_id or "").strip() or "—"
             record.envia_odoo_version_display = odoo_version
 
     @api.depends(

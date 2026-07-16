@@ -190,6 +190,12 @@ class ResCompany(models.Model):
         copy=False,
         help="Company identifier assigned by Envia.com during plugin integration.",
     )
+    envia_user_id = fields.Char(
+        string="Envia User ID",
+        readonly=True,
+        copy=False,
+        help="User identifier assigned by Envia.com during plugin integration.",
+    )
     envia_plugin_version_display = fields.Char(
         string="Envia Plugin Version Display",
         compute="_compute_envia_plugin_version_display",
@@ -289,6 +295,7 @@ class ResCompany(models.Model):
         hash_token: str,
         shop_id: str,
         envia_company_id: str | int | None = None,
+        envia_user_id: str | int | None = None,
         api_key: str | None = None,
     ) -> dict:
         """Persist a successful Envia integration callback.
@@ -302,6 +309,7 @@ class ResCompany(models.Model):
             "envia_oauth_last_error": False,
             "envia_shop_id": shop_id or False,
             "envia_company_id": str(envia_company_id).strip() if envia_company_id else False,
+            "envia_user_id": str(envia_user_id).strip() if envia_user_id else False,
         }
         if api_key:
             company_vals["envia_integration_api_key"] = api_key
@@ -322,6 +330,7 @@ class ResCompany(models.Model):
                 "envia_api_token": False,
                 "envia_shop_id": False,
                 "envia_company_id": False,
+                "envia_user_id": False,
                 "envia_oauth_last_error": error_message,
             }
         )
