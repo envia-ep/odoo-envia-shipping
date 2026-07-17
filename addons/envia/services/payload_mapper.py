@@ -21,6 +21,30 @@ class PayloadMapper:
         return weight
 
     @staticmethod
+    def envia_weight_unit(env) -> str | None:
+        """Map Odoo product weight UoM to Envia weightUnit (KG/LB)."""
+        Product = env["product.template"]
+        uom = Product._get_weight_uom_id_from_ir_config_parameter()
+        return PayloadMapper._uom_to_envia_weight_unit(uom)
+
+    @staticmethod
+    def _uom_to_envia_weight_unit(uom) -> str | None:
+        if not uom:
+            return None
+        xmlids = uom.get_external_id()
+        xmlid = (xmlids.get(uom.id) or "").casefold()
+        if xmlid.endswith("product_uom_kgm") or xmlid.endswith("uom_kgm"):
+            return "KG"
+        if xmlid.endswith("product_uom_lb") or xmlid.endswith("uom_lb"):
+            return "LB"
+        name = (uom.name or "").casefold()
+        if "kg" in name or "kilo" in name:
+            return "KG"
+        if "lb" in name or "pound" in name or "libra" in name:
+            return "LB"
+        return None
+
+    @staticmethod
     def sale_order_raw_weight(order):
         return sum(
             (line.product_id.weight or 0.0) * line.product_uom_qty
@@ -31,6 +55,29 @@ class PayloadMapper:
     def sale_order_package_weight(order):
         return PayloadMapper.normalize_package_weight(
             PayloadMapper.sale_order_raw_weight(order)
+        )
+
+    @staticmethod
+    def products_missing_weight(products):
+        return [product for product in products if product and not (product.weight or 0.0)]
+
+    @staticmethod
+    def quote_context_products(sale_order=None, picking=None):
+        if sale_order:
+            return PayloadMapper.merchandise_order_lines(sale_order).mapped("product_id")
+        if picking:
+            return picking.move_ids.filtered(
+                lambda move: move.product_id and move.state != "cancel"
+            ).mapped("product_id")
+        return []
+
+    @staticmethod
+    def missing_weight_warning(products):
+        if not PayloadMapper.products_missing_weight(products):
+            return False
+        return _(
+            "One or more products have no weight. You can still get a quote; "
+            "Envia will use its default package values because product weight is missing."
         )
 
     @staticmethod
@@ -221,7 +268,10 @@ class PayloadMapper:
     def build_quote_request_from_sale_order(order) -> QuoteRequest:
         order.ensure_one()
         company = order.company_id
-        origin_partner = company._envia_get_default_origin_partner()
+        warehouse = order.warehouse_id
+        origin_partner = (
+            warehouse.partner_id if warehouse and warehouse.partner_id else None
+        ) or company._envia_get_default_origin_partner()
         destination_partner = order.partner_shipping_id
         if not destination_partner:
             raise UserError(_("The sales order needs a delivery address to quote Envia rates."))
@@ -253,6 +303,10 @@ class PayloadMapper:
             origin_state,
             company,
         )
+        if warehouse:
+            address_id = warehouse._envia_origin_address_id()
+            if address_id:
+                origin_contact.address_id = address_id
         destination_contact = mapper.build_side_contact(
             destination_partner,
             destination_partner.zip,
@@ -276,6 +330,7 @@ class PayloadMapper:
                     destination_contact.state,
                 ),
                 "weight": PayloadMapper.sale_order_package_weight(order),
+                "weight_unit": PayloadMapper.envia_weight_unit(order.env),
                 "content": mapper.sale_order_package_content(order),
                 "declared_value": mapper.sale_order_declared_value(order),
                 "currency": order.currency_id.name,
@@ -298,6 +353,7 @@ class PayloadMapper:
             weight=float(
                 PayloadMapper.normalize_package_weight(values.get("weight") or 0.0)
             ),
+            weight_unit=values.get("weight_unit"),
             content=PayloadMapper.normalize_package_content(values["content"]),
             declared_value=float(values["declared_value"]) if values.get("declared_value") else None,
             currency=values.get("currency") or "MXN",

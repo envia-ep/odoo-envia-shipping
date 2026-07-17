@@ -5,11 +5,17 @@ from odoo.tests.common import TransactionCase
 
 from odoo.addons.envia.services.envia_config import (
     DEFAULT_CHECKOUT_PATH,
+    DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
+    DEFAULT_PACKAGE_DIMENSIONS_PATH,
+    DEFAULT_SHOP_ADDRESS_BASE_URL,
     ENVIA_ENVIRONMENT_PARAM,
     get_envia_api_base_url,
     get_envia_checkout_path,
+    get_envia_ecommerce_private_base_url,
     get_envia_environment_from_config,
+    get_envia_package_dimensions_path,
     get_envia_queries_base_url,
+    get_envia_shop_address_base_url,
     is_envia_sandbox,
     oauth_registration_sandbox,
     resolve_envia_environment,
@@ -90,6 +96,67 @@ class TestEnviaConfig(TransactionCase):
     def test_checkout_path_env_override(self):
         self.assertEqual(get_envia_checkout_path("34084"), "v3/checkout/odoo/34084")
 
+    @patch.dict(
+        "os.environ",
+        {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "", "ENVIA_PACKAGE_DIMENSIONS_PATH": ""},
+        clear=False,
+    )
+    def test_package_dimensions_url_defaults(self):
+        self.assertEqual(
+            get_envia_ecommerce_private_base_url(),
+            DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
+        )
+        self.assertEqual(
+            get_envia_package_dimensions_path("34084"),
+            DEFAULT_PACKAGE_DIMENSIONS_PATH.format(shop_id="34084"),
+        )
+
+    @patch.dict(
+        "os.environ",
+        {
+            "ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "https://ecommerce-private-prod.example.com",
+            "ENVIA_PACKAGE_DIMENSIONS_PATH": "package/dimensions/{shop_id}",
+        },
+        clear=False,
+    )
+    def test_package_dimensions_url_env_override(self):
+        self.assertEqual(
+            get_envia_ecommerce_private_base_url(),
+            "https://ecommerce-private-prod.example.com/",
+        )
+        self.assertEqual(
+            get_envia_package_dimensions_path("34084"),
+            "package/dimensions/34084",
+        )
+
+    def test_package_dimensions_default_host_is_ecommerce_api_new(self):
+        self.assertEqual(
+            DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
+            "https://ecommerce-api-new.herokuapp.com/",
+        )
+
+    @patch.dict("os.environ", {"ENVIA_SHOP_ADDRESS_BASE_URL": ""}, clear=False)
+    def test_shop_address_base_url_default(self):
+        self.assertEqual(
+            get_envia_shop_address_base_url(),
+            DEFAULT_SHOP_ADDRESS_BASE_URL,
+        )
+        self.assertEqual(
+            DEFAULT_SHOP_ADDRESS_BASE_URL,
+            "https://queries-stage.herokuapp.com/",
+        )
+
+    @patch.dict(
+        "os.environ",
+        {"ENVIA_SHOP_ADDRESS_BASE_URL": "https://queries-custom.example.com"},
+        clear=False,
+    )
+    def test_shop_address_base_url_env_override(self):
+        self.assertEqual(
+            get_envia_shop_address_base_url(),
+            "https://queries-custom.example.com/",
+        )
+
     @patch.dict("os.environ", {"ENVIA_API_BASE_URL": "", "ENVIA_QUERIES_BASE_URL": ""}, clear=False)
     def test_company_base_url_override_takes_priority_over_environment(self):
         company = self.env.company
@@ -121,7 +188,8 @@ class TestEnviaConfig(TransactionCase):
     def test_oauth_registration_sandbox_is_always_false(self):
         self.assertFalse(oauth_registration_sandbox())
 
-    def test_default_origin_partner_from_warehouse(self):
+    def test_default_origin_partner_ignores_warehouse_setting(self):
+        """Temporary: Envia default-origin settings are not used."""
         company = self.env.company
         warehouse = self.env["stock.warehouse"].search(
             [("company_id", "=", company.id)],
@@ -134,7 +202,7 @@ class TestEnviaConfig(TransactionCase):
                 "envia_default_origin_partner_id": False,
             }
         )
-        self.assertEqual(company._envia_get_default_origin_partner(), warehouse.partner_id)
+        self.assertEqual(company._envia_get_default_origin_partner(), company.partner_id)
 
     def test_default_origin_partner_falls_back_to_company(self):
         company = self.env.company

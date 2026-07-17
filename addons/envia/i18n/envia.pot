@@ -403,6 +403,8 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_create_shipment_wizard_form
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
 msgid "Cancel"
 msgstr ""
 
@@ -492,6 +494,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:envia.field_envia_quote_wizard_branch__city
 #: model_terms:ir.ui.view,arch_db:envia.choose_delivery_carrier_view_form_envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_quote_wizard_form
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
 msgid "City"
 msgstr ""
 
@@ -539,10 +543,12 @@ msgid "Companies"
 msgstr ""
 
 #. module: envia
+#. odoo-javascript
 #: model:ir.model.fields,field_description:envia.field_envia_plugin_connect_wizard__company_id
 #: model:ir.model.fields,field_description:envia.field_envia_quote__company_id
 #: model:ir.model.fields,field_description:envia.field_envia_quote_onboarding_wizard__company_id
 #: model:ir.model.fields,field_description:envia.field_envia_shipment__company_id
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
 msgid "Company"
 msgstr ""
 
@@ -599,7 +605,7 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid "Confirm in Odoo"
+msgid "Configure automatic quoting in Envia"
 msgstr ""
 
 #. module: envia
@@ -723,6 +729,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:envia.field_envia_quote_wizard__origin_country_id
 #: model_terms:ir.ui.view,arch_db:envia.choose_delivery_carrier_view_form_envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_quote_wizard_form
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
 msgid "Country"
 msgstr ""
 
@@ -1118,7 +1126,9 @@ msgid "Edit contact"
 msgstr ""
 
 #. module: envia
+#. odoo-javascript
 #: model:ir.model.fields,field_description:envia.field_envia_quote_wizard_branch__email
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
 msgid "Email"
 msgstr ""
 
@@ -1554,6 +1564,12 @@ msgstr ""
 #: code:addons/envia/models/sale_order.py:0
 #: code:addons/envia/models/stock_picking.py:0
 msgid "Envia label created: %(tracking)s · %(carrier)s"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.choose_delivery_carrier_view_form_envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_quote_wizard_form
+msgid "Envia package for quote"
 msgstr ""
 
 #. module: envia
@@ -2253,6 +2269,19 @@ msgid "Link Odoo with Envia.com to get live shipping rates."
 msgstr ""
 
 #. module: envia
+#: model:ir.model.fields,field_description:envia.field_envia_quote_wizard__origin_linked_contact_display
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_default_origin_partner_display
+msgid "Linked contact"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.choose_delivery_carrier_view_form_envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_quote_wizard_form
+msgid "Linked contact:"
+msgstr ""
+
+#. module: envia
 #. odoo-python
 #: code:addons/envia/models/sale_order.py:0
 msgid "Live rates from Envia.com"
@@ -2550,8 +2579,8 @@ msgstr ""
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
 msgid ""
-"Odoo updates automatically when Envia saves your connection and shipping "
-"token."
+"In your Envia store settings, enable Automatic Quoting at checkout "
+"to control the shipping price customers see when they place an order."
 msgstr ""
 
 #. module: envia
@@ -2562,6 +2591,14 @@ msgstr ""
 #. module: envia
 #: model:ir.model,name:envia.model_onboarding_onboarding_step
 msgid "Onboarding Step"
+msgstr ""
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/payload_mapper.py:0
+msgid ""
+"One or more products have no weight. You can still get a quote; "
+"Envia will use its default package values because product weight is missing."
 msgstr ""
 
 #. module: envia
@@ -2868,7 +2905,9 @@ msgid ""
 msgstr ""
 
 #. module: envia
+#. odoo-javascript
 #: model:ir.model.fields,field_description:envia.field_envia_quote_wizard_branch__phone
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
 msgid "Phone"
 msgstr ""
 
@@ -3438,7 +3477,7 @@ msgstr ""
 
 #. module: envia
 #: model:product.template,name:envia.product_envia_shipping_product_template
-msgid "Shipping"
+msgid "Shipping - Envia.com"
 msgstr ""
 
 #. module: envia
@@ -3455,6 +3494,12 @@ msgstr ""
 #. odoo-python
 #: code:addons/envia/wizards/envia_quote_wizard.py:0
 msgid "Shipping cost can only be applied before the sale order is confirmed."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.choose_delivery_carrier_view_form_envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_quote_wizard_form
+msgid "Shipping rates are calculated with this Envia package weight."
 msgstr ""
 
 #. module: envia
@@ -3544,6 +3589,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:envia.field_envia_quote_wizard__destination_state_id
 #: model:ir.model.fields,field_description:envia.field_envia_quote_wizard__origin_state_id
 #: model:ir.model.fields,field_description:envia.field_envia_shipment__state
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
 msgid "State"
 msgstr ""
 
@@ -3588,6 +3635,35 @@ msgstr ""
 #. module: envia
 #: model:ir.model.fields.selection,name:envia.selection__res_company__envia_label_size__stock_4x6
 msgid "Stock 4x6"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
+msgid "Start quoting"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
+msgid ""
+"Set up your warehouse and origin addresses in Odoo so Envia "
+"can quote from the right locations."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
+msgid "Sync products in Envia"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
+msgid "Sync shipping origins in Odoo"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
+msgid ""
+"Synchronize your catalog in Envia so quotes use the correct "
+"product weights and dimensions."
 msgstr ""
 
 #. module: envia
@@ -3682,6 +3758,15 @@ msgstr ""
 #. odoo-python
 #: code:addons/envia/models/envia_shipment.py:0
 msgid "This shipment has no tracking number."
+msgstr ""
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/wizards/envia_quote_wizard.py:0
+msgid ""
+"This warehouse does not have an Envia origin address yet. Create or link one "
+"on the warehouse to improve quoting. You can still get rates with the "
+"address shown here."
 msgstr ""
 
 #. module: envia
@@ -3919,6 +4004,13 @@ msgstr ""
 msgid ""
 "Your Odoo store is connected with Envia.com. Click Refresh token to sync the "
 "latest connection details."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
+msgid ""
+"You are ready to get carrier rates and create labels from "
+"sale orders and deliveries in Odoo."
 msgstr ""
 
 #. module: envia
@@ -4242,4 +4334,107 @@ msgstr ""
 #. odoo-python
 #: code:addons/envia/static/src/js/envia_oauth_integration_popup.js:0
 msgid "Envia.com integration"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.xml:0
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Origin address"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Origin address saved and linked to the shop."
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Full name"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Search country…"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Search…"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Select…"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Loading Envia form…"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Saving…"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Save"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Address line 1"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Address line 2"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Exterior number"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Zip Code"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Neighborhood"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Identification Number"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Reference"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/components/envia_generic_form/envia_generic_form.js:0
+msgid "Alias"
 msgstr ""

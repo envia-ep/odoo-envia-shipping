@@ -222,6 +222,7 @@ class EnviaShipment(models.Model):
             service_name=selected.service_name,
             package_weight=quote.weight,
             package_content=quote.content,
+            weight_unit=PayloadMapper.envia_weight_unit(quote.env),
         )
         expected_drop_off = EnviaOfficialAdapter._expected_drop_off(
             request.origin_contact,

@@ -78,14 +78,16 @@ class ResCompany(models.Model):
         string="Default Origin Contact",
         help="Legacy fallback when no origin warehouse is set.",
     )
+    envia_warehouse_origin_ids = fields.One2many(
+        "envia.warehouse.origin",
+        "company_id",
+        string="Warehouse Origin Addresses",
+    )
 
     def _envia_get_default_origin_partner(self):
         self.ensure_one()
-        warehouse = self.envia_default_origin_warehouse_id
-        if warehouse and warehouse.partner_id:
-            return warehouse.partner_id
-        if self.envia_default_origin_partner_id:
-            return self.envia_default_origin_partner_id
+        # ponytail: temporarily ignore envia_default_origin_* settings; restore
+        # warehouse/partner fallback when default origin config is re-enabled.
         return self.partner_id
 
     @api.model
@@ -261,6 +263,11 @@ class ResCompany(models.Model):
         """
         self.ensure_one()
         return self._envia_get_api_token()
+
+    def _envia_get_package_dimensions_token(self) -> str:
+        """Bearer token for package/dimensions (same as shipping envia_api_token)."""
+        self.ensure_one()
+        return self._envia_get_shipping_api_token()
 
     def _envia_is_shipping_api_configured(self) -> bool:
         self.ensure_one()

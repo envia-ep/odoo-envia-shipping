@@ -108,28 +108,7 @@
                     </block>
 
                     <block title="Shipping defaults"
-                           help="Default origin used when quoting from sales orders and Add shipping.">
-                        <setting string="Default ship-from warehouse"
-                                 help="Origin for Envia quotes. Uses the warehouse address (linked contact). Must include street, city, postal code, country, phone and email. Destination comes from the customer delivery address on the order.">
-                            <field name="envia_default_origin_warehouse_id"
-                                   options="{'no_create': True}"
-                                   domain="[('company_id', '=', company_id)]"/>
-                            <div class="text-muted small mt-2"
-                                 invisible="not envia_default_origin_warehouse_id">
-                                <span class="fw-bold">Linked contact:</span>
-                                <field name="envia_default_origin_partner_display"
-                                       class="d-inline"
-                                       nolabel="1"
-                                       readonly="1"/>
-                            </div>
-                            <div class="text-muted small mt-1"
-                                 invisible="not envia_default_origin_address_preview">
-                                <field name="envia_default_origin_address_preview"
-                                       nolabel="1"
-                                       readonly="1"
-                                       widget="text"/>
-                            </div>
-                        </setting>
+                           help="Default carriers used when quoting from sales orders and Add shipping.">
                         <setting>
                             <div class="o_envia_settings_toggle_stack">
                                 <div class="o_envia_settings_toggle_row">
@@ -151,6 +130,33 @@
                                     </div>
                                     <field name="envia_enable_branches" nolabel="1"/>
                                 </div>
+                            </div>
+                        </setting>
+                    </block>
+
+                    <block title="Origin address"
+                           help="Create Envia origin addresses and link them to Odoo warehouses.">
+                        <setting string="Origin address"
+                                 help="Open the Envia address form, save a new origin address, and set it as the shop default.">
+                            <button name="action_open_envia_billing_info_wizard" type="object"
+                                    string="Add origin address"
+                                    class="btn-primary"
+                                    icon="fa-file-text-o"/>
+                        </setting>
+                        <setting string="Warehouse origins"
+                                 help="Link each Odoo warehouse to an Envia shop origin address.">
+                            <button name="action_open_envia_warehouse_origin_wizard" type="object"
+                                    string="Link warehouse to origin"
+                                    class="btn-primary"
+                                    icon="fa-link"/>
+                            <div class="mt-3" invisible="not envia_warehouse_origin_ids">
+                                <field name="envia_warehouse_origin_ids" nolabel="1">
+                                    <list create="0" delete="1" edit="0">
+                                        <field name="warehouse_id"/>
+                                        <field name="envia_address_label" string="Envia origin"/>
+                                        <field name="envia_address_id" optional="hide"/>
+                                    </list>
+                                </field>
                             </div>
                         </setting>
                     </block>

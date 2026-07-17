@@ -27,6 +27,7 @@ class QuoteRequest:
     destination_contact: "Contact | None" = None
     items: list["ShipmentItem"] = field(default_factory=list)
     locale: str = "es_MX"
+    weight_unit: str | None = None
 
 
 @dataclass
@@ -69,6 +70,7 @@ class Contact:
     district: str | None = None
     identification_number: str | None = None
     branch_code: str | None = None
+    address_id: str | None = None
 
 
 @dataclass
@@ -99,6 +101,7 @@ class CreateShipmentRequest:
     service_name: str | None = None
     package_weight: float | None = None
     package_content: str | None = None
+    weight_unit: str | None = None
 
 
 @dataclass

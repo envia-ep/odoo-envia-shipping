@@ -1,4 +1,4 @@
-from odoo import _, fields, models
+from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 
@@ -24,6 +24,34 @@ class SaleOrder(models.Model):
     )
     envia_summary = fields.Char(compute="_compute_envia_status")
     envia_service_id = fields.Integer(string="Envia Service ID", copy=False)
+
+    def write(self, vals):
+        to_recompute = self.env["sale.order"]
+        if "partner_shipping_id" in vals:
+            new_shipping_id = vals["partner_shipping_id"] or False
+            to_recompute = self.filtered(
+                lambda order: order.partner_shipping_id.id != new_shipping_id
+                and order._envia_has_shipping_method()
+            )
+        result = super().write(vals)
+        # Match delivery.onchange_order_line: keep the line, flag cost as stale.
+        if to_recompute:
+            to_recompute.filtered(lambda order: not order.recompute_delivery_price).write(
+                {"recompute_delivery_price": True}
+            )
+        return result
+
+    def _envia_has_shipping_method(self):
+        self.ensure_one()
+        if self.carrier_id.delivery_type == "envia":
+            return True
+        product = self.env.ref("envia.product_envia_shipping", raise_if_not_found=False)
+        return bool(
+            product
+            and self.order_line.filtered(
+                lambda line: line.is_delivery and line.product_id == product
+            )
+        )
 
     def _compute_envia_counts(self):
         for order in self:

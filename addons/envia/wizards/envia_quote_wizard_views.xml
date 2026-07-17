@@ -13,6 +13,8 @@
                     <field name="envia_branches_enabled" invisible="1"/>
                     <field name="can_apply_shipping_to_order" invisible="1"/>
                     <field name="sale_order_state" invisible="1"/>
+                    <field name="origin_readonly" invisible="1"/>
+                    <field name="destination_partner_readonly" invisible="1"/>
                     <field name="is_sandbox" invisible="1"/>
                     <field name="is_standalone" invisible="1"/>
                     <field name="selected_service_label" invisible="1"/>
@@ -55,6 +57,27 @@
                         <button name="action_fill_sandbox_test_route" type="object"
                                 string="Use test route" class="btn btn-link btn-sm p-0"/>
                     </div>
+                    <div class="alert alert-warning mb-3" role="status"
+                         invisible="not weight_warning">
+                        <field name="weight_warning" readonly="1" nolabel="1"/>
+                    </div>
+                    <div class="alert alert-warning mb-3" role="status"
+                         invisible="not origin_envia_sync_warning">
+                        <field name="origin_envia_sync_warning" readonly="1" nolabel="1"/>
+                    </div>
+                    <div class="alert alert-info mb-3" role="status"
+                         invisible="not envia_package_preview">
+                        <div class="fw-bold mb-1">Envia package for quote</div>
+                        <field name="envia_package_preview" readonly="1" nolabel="1"
+                               class="o_envia_package_preview"/>
+                        <div class="text-muted small mt-1">
+                            Shipping rates are calculated with this Envia package weight.
+                        </div>
+                    </div>
+                    <div class="alert alert-warning mb-3" role="status"
+                         invisible="not envia_package_sync_hint">
+                        <field name="envia_package_sync_hint" readonly="1" nolabel="1"/>
+                    </div>
 
                     <group>
                         <group string="Origin" class="o_envia_side_panel">
@@ -65,7 +88,8 @@
                             <div class="o_envia_side_body" colspan="2">
                                 <field name="origin_warehouse_id" string="Warehouse"
                                        domain="[('id', 'in', allowed_origin_warehouse_ids)]"
-                                       options="{'no_create': True, 'no_open': True}"/>
+                                       options="{'no_create': True, 'no_open': True}"
+                                       readonly="origin_readonly"/>
                                 <div class="text-muted small mt-1"
                                      invisible="not origin_linked_contact_display">
                                     <span class="fw-bold">Linked contact:</span>
@@ -76,20 +100,27 @@
                                 </div>
                                 <group string="Address details" colspan="2"
                                        class="o_envia_address_fields mt-2">
-                                    <field name="origin_street" string="Street"/>
-                                    <field name="origin_street_number" string="Number"/>
-                                    <field name="origin_district" string="District"/>
-                                    <field name="origin_postal_code" string="Postal code"/>
-                                    <field name="origin_city" string="City"/>
+                                    <field name="origin_street" string="Street"
+                                           readonly="origin_readonly"/>
+                                    <field name="origin_street_number" string="Number"
+                                           readonly="origin_readonly"/>
+                                    <field name="origin_district" string="District"
+                                           readonly="origin_readonly"/>
+                                    <field name="origin_postal_code" string="Postal code"
+                                           readonly="origin_readonly"/>
+                                    <field name="origin_city" string="City"
+                                           readonly="origin_readonly"/>
                                     <field name="origin_country_id" string="Country"
-                                           options="{'no_open': True}"/>
+                                           options="{'no_open': True}"
+                                           readonly="origin_readonly"/>
                                     <field name="origin_state_id" string="State / Province"
-                                           options="{'no_open': True, 'no_create': True}"/>
+                                           options="{'no_open': True, 'no_create': True}"
+                                           readonly="origin_readonly"/>
                                 </group>
                                 <button name="action_open_origin_warehouse" type="object"
                                         string="Edit warehouse"
                                         class="btn btn-link btn-sm p-0"
-                                        invisible="not origin_warehouse_id"/>
+                                        invisible="not origin_warehouse_id or origin_readonly"/>
                                 <div class="o_envia_side_hint mt-2"
                                      invisible="origin_location_type != 'branch'">
                                     Enter your business address above. You can drop the package at any branch of the carrier you choose.
@@ -105,7 +136,8 @@
                             <div class="o_envia_side_body" colspan="2">
                                 <field name="destination_partner_id" string="Contact"
                                        context="{'show_address': 1, 'default_type': 'delivery'}"
-                                       options="{'no_open': True}"/>
+                                       options="{'no_open': True}"
+                                       readonly="destination_partner_readonly"/>
                                 <group string="Address details" colspan="2"
                                        class="o_envia_address_fields mt-2">
                                     <field name="destination_street" string="Street"/>

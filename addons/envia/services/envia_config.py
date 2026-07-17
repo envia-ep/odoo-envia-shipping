@@ -10,12 +10,19 @@ ENVIA_ENVIRONMENT_PARAM = "envia.environment"
 API_BASE_URL_ENV = "ENVIA_API_BASE_URL"
 QUERIES_BASE_URL_ENV = "ENVIA_QUERIES_BASE_URL"
 CHECKOUT_PATH_ENV = "ENVIA_CHECKOUT_PATH"
+ECOMMERCE_PRIVATE_BASE_URL_ENV = "ENVIA_ECOMMERCE_PRIVATE_BASE_URL"
+PACKAGE_DIMENSIONS_PATH_ENV = "ENVIA_PACKAGE_DIMENSIONS_PATH"
+SHOP_ADDRESS_BASE_URL_ENV = "ENVIA_SHOP_ADDRESS_BASE_URL"
 
 SANDBOX_API_BASE_URL = "https://api-test.envia.com/"
 PRODUCTION_API_BASE_URL = "https://api.envia.com/"
 SANDBOX_QUERIES_BASE_URL = "https://queries-test.envia.com/"
 PRODUCTION_QUERIES_BASE_URL = "https://queries.envia.com/"
 DEFAULT_CHECKOUT_PATH = "v2/checkout/odoo/{shop_id}"
+DEFAULT_ECOMMERCE_PRIVATE_BASE_URL = "https://ecommerce-api-new.herokuapp.com/"
+DEFAULT_PACKAGE_DIMENSIONS_PATH = "package/dimensions/test/{shop_id}"
+# Origin address ↔ shop match (POST /shop-default-address/{shop_id}).
+DEFAULT_SHOP_ADDRESS_BASE_URL = "https://queries-stage.herokuapp.com/"
 
 
 def get_envia_environment_from_env() -> str | None:
@@ -75,6 +82,24 @@ def get_envia_queries_base_url_from_env() -> str | None:
 
 def get_envia_checkout_path(shop_id: str) -> str:
     template = os.environ.get(CHECKOUT_PATH_ENV, "").strip() or DEFAULT_CHECKOUT_PATH
+    return template.format(shop_id=shop_id)
+
+
+def get_envia_ecommerce_private_base_url() -> str:
+    value = os.environ.get(ECOMMERCE_PRIVATE_BASE_URL_ENV, "").strip()
+    return _normalize_base_url(value) if value else DEFAULT_ECOMMERCE_PRIVATE_BASE_URL
+
+
+def get_envia_shop_address_base_url() -> str:
+    value = os.environ.get(SHOP_ADDRESS_BASE_URL_ENV, "").strip()
+    return _normalize_base_url(value) if value else DEFAULT_SHOP_ADDRESS_BASE_URL
+
+
+def get_envia_package_dimensions_path(shop_id: str) -> str:
+    template = (
+        os.environ.get(PACKAGE_DIMENSIONS_PATH_ENV, "").strip()
+        or DEFAULT_PACKAGE_DIMENSIONS_PATH
+    )
     return template.format(shop_id=shop_id)
 
 

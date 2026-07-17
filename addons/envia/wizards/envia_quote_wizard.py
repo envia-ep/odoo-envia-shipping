@@ -361,6 +361,10 @@ class EnviaQuoteWizard(models.TransientModel):
     route_summary = fields.Char(compute="_compute_route_summary")
     origin_address_warning = fields.Char(compute="_compute_address_warnings")
     destination_address_warning = fields.Char(compute="_compute_address_warnings")
+    origin_envia_sync_warning = fields.Char(compute="_compute_origin_envia_sync_warning")
+    weight_warning = fields.Char(compute="_compute_weight_warning")
+    envia_package_preview = fields.Text(readonly=True)
+    envia_package_sync_hint = fields.Char(readonly=True)
     origin_address_preview = fields.Char(compute="_compute_address_previews")
     destination_address_preview = fields.Char(compute="_compute_address_previews")
     origin_contact_complete = fields.Boolean(compute="_compute_contact_status")
@@ -400,6 +404,10 @@ class EnviaQuoteWizard(models.TransientModel):
     can_generate_label = fields.Boolean(compute="_compute_form_state")
     can_apply_shipping_to_order = fields.Boolean(compute="_compute_form_state")
     sale_order_state = fields.Selection(related="sale_order_id.state", readonly=True)
+    origin_readonly = fields.Boolean(compute="_compute_origin_readonly")
+    destination_partner_readonly = fields.Boolean(
+        compute="_compute_destination_partner_readonly",
+    )
 
     @api.depends("service_line_ids")
     def _compute_show_service_rates(self):
@@ -475,6 +483,52 @@ class EnviaQuoteWizard(models.TransientModel):
             ]
         )
 
+    @api.depends("sale_order_id", "sale_order_id.state")
+    def _compute_origin_readonly(self):
+        for wizard in self:
+            # Match sale_stock: warehouse on the SO is locked after confirmation.
+            wizard.origin_readonly = wizard.sale_order_id.state in ("sale", "done", "cancel")
+
+    @api.depends("sale_order_id")
+    def _compute_destination_partner_readonly(self):
+        for wizard in self:
+            # Sales: destination contact is always the SO Delivery Address.
+            wizard.destination_partner_readonly = bool(wizard.sale_order_id)
+
+    @staticmethod
+    def _sale_order_destination_partner(sale_order):
+        return sale_order.partner_shipping_id or sale_order.partner_id
+
+    def _apply_sale_order_destination(self):
+        """Force destination contact (and address when Ship) from SO Delivery Address."""
+        for wizard in self:
+            order = wizard.sale_order_id
+            if not order:
+                continue
+            destination = wizard._sale_order_destination_partner(order)
+            if not destination:
+                continue
+            values = {"destination_partner_id": destination.id}
+            # Ocurre keeps branch address; door delivery mirrors the SO partner.
+            if wizard.destination_location_type != "branch":
+                values.update(wizard._build_address_defaults(destination, "destination"))
+            changed = any(
+                wizard._normalize_quote_compare_value(values[field])
+                != wizard._normalize_quote_compare_value(getattr(wizard, field))
+                for field in values
+                if field in wizard._fields
+            )
+            if not changed:
+                continue
+            ctx = {
+                "envia_skip_auto_quote": True,
+                "envia_skip_branch_autoload": True,
+            }
+            # Partner unchanged → skip address-option reshuffle (UI MissingError).
+            if wizard.destination_partner_id == destination:
+                ctx["envia_skip_address_sync"] = True
+            wizard.with_context(**ctx).write(values)
+
     @api.depends("sale_order_id", "sale_order_id.company_id", "picking_id", "picking_id.company_id")
     def _compute_allowed_origin_warehouses(self):
         Warehouse = self.env["stock.warehouse"]
@@ -548,6 +602,8 @@ class EnviaQuoteWizard(models.TransientModel):
             allowed = allowed | current_partner
         allowed_ids = set(allowed.ids)
         lines.filtered(lambda line: line.partner_id.id not in allowed_ids).unlink()
+        # Re-browse after unlink; stale ids raise MissingError on write.
+        lines = getattr(self, f"{side}_address_line_ids")
         existing_partner_ids = set(lines.mapped("partner_id").ids)
         to_create = [
             {
@@ -565,10 +621,10 @@ class EnviaQuoteWizard(models.TransientModel):
         if current_partner:
             match = lines.filtered(lambda line: line.partner_id.id == current_partner.id)
             if match:
-                lines.write({"is_selected": False})
+                (lines - match).write({"is_selected": False})
                 match.is_selected = True
             elif lines:
-                lines.write({"is_selected": False})
+                lines[1:].write({"is_selected": False})
                 lines[0].is_selected = True
         elif lines:
             lines.write({"is_selected": False})
@@ -585,6 +641,7 @@ class EnviaQuoteWizard(models.TransientModel):
             allowed = allowed | current_warehouse
         allowed_ids = set(allowed.ids)
         lines.filtered(lambda line: line.warehouse_id.id not in allowed_ids).unlink()
+        lines = self.origin_address_line_ids
         existing_warehouse_ids = set(lines.mapped("warehouse_id").ids)
         to_create = []
         for warehouse in allowed:
@@ -609,10 +666,10 @@ class EnviaQuoteWizard(models.TransientModel):
                 lambda line: line.warehouse_id.id == current_warehouse.id
             )
             if match:
-                lines.write({"is_selected": False})
+                (lines - match).write({"is_selected": False})
                 match.is_selected = True
             elif lines:
-                lines.write({"is_selected": False})
+                lines[1:].write({"is_selected": False})
                 lines[0].is_selected = True
         elif lines:
             lines.write({"is_selected": False})
@@ -670,6 +727,43 @@ class EnviaQuoteWizard(models.TransientModel):
             wizard.destination_address_warning = wizard._side_address_missing_message(
                 "destination"
             )
+
+    @api.depends(
+        "origin_warehouse_id",
+        "origin_warehouse_id.envia_origin_id",
+        "origin_warehouse_id.envia_origin_id.envia_address_id",
+        "origin_location_type",
+    )
+    def _compute_origin_envia_sync_warning(self):
+        for wizard in self:
+            wizard.origin_envia_sync_warning = False
+            if wizard.origin_location_type == "branch":
+                continue
+            warehouse = wizard.origin_warehouse_id
+            if not warehouse:
+                continue
+            if warehouse._envia_origin_address_id():
+                continue
+            wizard.origin_envia_sync_warning = _(
+                "This warehouse does not have an Envia origin address yet. "
+                "Create or link one on the warehouse to improve quoting. "
+                "You can still get rates with the address shown here."
+            )
+
+    @api.depends(
+        "sale_order_id",
+        "sale_order_id.order_line.product_id.weight",
+        "picking_id",
+        "picking_id.move_ids.product_id.weight",
+        "picking_id.move_ids.state",
+    )
+    def _compute_weight_warning(self):
+        for wizard in self:
+            products = PayloadMapper.quote_context_products(
+                sale_order=wizard.sale_order_id,
+                picking=wizard.picking_id,
+            )
+            wizard.weight_warning = PayloadMapper.missing_weight_warning(products)
 
     @api.depends("origin_partner_id", "destination_partner_id")
     def _compute_address_previews(self):
@@ -736,7 +830,7 @@ class EnviaQuoteWizard(models.TransientModel):
             )
             wizard.can_apply_shipping_to_order = bool(
                 wizard.sale_order_id
-                and wizard.sale_order_id.state in ("draft", "sent")
+                and wizard.sale_order_id.state != "cancel"
                 and wizard.can_generate_label
             )
             wizard.validation_summary = "\n".join(f"• {error}" for error in errors) if errors else False
@@ -821,7 +915,11 @@ class EnviaQuoteWizard(models.TransientModel):
     def default_get(self, fields_list):
         defaults = super().default_get(fields_list)
         company = self.env.company
-        warehouse = company.envia_default_origin_warehouse_id
+        sale_order_id = self.env.context.get("default_sale_order_id")
+        sale_order = self.env["sale.order"].browse(sale_order_id) if sale_order_id else False
+        # Sales: origin is the Delivery warehouse on the order.
+        # ponytail: skip company.envia_default_origin_warehouse_id until re-enabled.
+        warehouse = sale_order.warehouse_id if sale_order else False
         if not warehouse:
             warehouse = self.env["stock.warehouse"].search(
                 [("company_id", "=", company.id)],
@@ -838,14 +936,16 @@ class EnviaQuoteWizard(models.TransientModel):
                 self._build_address_defaults(origin_partner, "origin", company.country_id)
             )
         destination_partner_id = self.env.context.get("default_destination_partner_id")
+        if sale_order:
+            destination = self._sale_order_destination_partner(sale_order)
+            if destination:
+                destination_partner_id = destination.id
         if destination_partner_id:
             defaults["destination_partner_id"] = destination_partner_id
             destination_partner = self.env["res.partner"].browse(destination_partner_id)
             defaults.update(self._build_address_defaults(destination_partner, "destination"))
-        sale_order_id = self.env.context.get("default_sale_order_id")
-        if sale_order_id:
-            defaults["sale_order_id"] = sale_order_id
-            sale_order = self.env["sale.order"].browse(sale_order_id)
+        if sale_order:
+            defaults["sale_order_id"] = sale_order.id
             defaults["content"] = PayloadMapper.sale_order_package_content(sale_order)
             defaults["declared_value"] = PayloadMapper.sale_order_declared_value(sale_order)
             defaults["weight"] = PayloadMapper.sale_order_package_weight(sale_order)
@@ -1001,6 +1101,7 @@ class EnviaQuoteWizard(models.TransientModel):
                 "destination_country": self.destination_country_id.code,
                 "destination_state": self._side_envia_state("destination", destination_contact),
                 "weight": PayloadMapper.normalize_package_weight(self.weight),
+                "weight_unit": PayloadMapper.envia_weight_unit(self.env),
                 "content": self.content or "General merchandise",
                 "declared_value": self.declared_value or 0,
                 "currency": self.currency_id.name,
@@ -1090,6 +1191,14 @@ class EnviaQuoteWizard(models.TransientModel):
     def create(self, vals_list):
         company = self.env.company
         for vals in vals_list:
+            sale_order_id = vals.get("sale_order_id")
+            if sale_order_id:
+                sale_order = self.env["sale.order"].browse(sale_order_id)
+                if sale_order.warehouse_id:
+                    vals["origin_warehouse_id"] = sale_order.warehouse_id.id
+                destination = self._sale_order_destination_partner(sale_order)
+                if destination:
+                    vals["destination_partner_id"] = destination.id
             origin_warehouse_id = vals.get("origin_warehouse_id")
             if origin_warehouse_id:
                 warehouse = self.env["stock.warehouse"].browse(origin_warehouse_id)
@@ -1473,6 +1582,7 @@ class EnviaQuoteWizard(models.TransientModel):
                 "destination_country": self.destination_country_id.code,
                 "destination_state": self._side_envia_state("destination", destination_contact),
                 "weight": self.weight,
+                "weight_unit": PayloadMapper.envia_weight_unit(self.env),
                 "content": self.content,
                 "declared_value": self.declared_value,
                 "currency": self.currency_id.name,
@@ -2350,7 +2460,7 @@ class EnviaQuoteWizard(models.TransientModel):
         street = getattr(self, f"{prefix}_street")
         postal_code = getattr(self, f"{prefix}_postal_code")
         city = getattr(self, f"{prefix}_city")
-        return self._build_side_contact(
+        contact = self._build_side_contact(
             partner,
             street,
             postal_code,
@@ -2360,6 +2470,11 @@ class EnviaQuoteWizard(models.TransientModel):
             street_number=getattr(self, f"{prefix}_street_number") or None,
             district=getattr(self, f"{prefix}_district") or None,
         )
+        if side == "origin" and self.origin_warehouse_id:
+            address_id = self.origin_warehouse_id._envia_origin_address_id()
+            if address_id:
+                contact.address_id = address_id
+        return contact
 
     def _build_postal_placeholder_contact(self, side):
         company_partner = self.env.company.partner_id
@@ -2500,6 +2615,11 @@ class EnviaQuoteWizard(models.TransientModel):
         self.ensure_one()
         return side == "destination" and self.destination_location_type == "branch"
 
+    def _apply_package_dimensions_preview(self, adapter, items):
+        # ponytail: package-dimensions API is off for now (token/host issues).
+        # Re-enable by restoring the fetch below; ceiling: no Envia package preview/hint.
+        return
+
     def _validate_before_quote(self):
         self.ensure_one()
         for side in ("origin", "destination"):
@@ -2515,8 +2635,18 @@ class EnviaQuoteWizard(models.TransientModel):
             raise UserError("\n".join(errors))
 
     def _get_quote_carriers(self):
+        """Carrier filter for checkout.
+
+        Only a *destination ocurre* selection locks the carrier. A selected rate or a
+        leftover branch line while on Ship-Ship must not shrink Get rate results.
+        """
         self.ensure_one()
-        return self._pickup_carrier_code() or "all"
+        if self.destination_location_type != "branch":
+            return "all"
+        destination = self._get_selected_branch("destination")
+        if destination and destination.carrier:
+            return destination.carrier
+        return "all"
 
     def action_get_quote(self, clear_branch_lines=True):
         self.ensure_one()
@@ -2585,6 +2715,8 @@ class EnviaQuoteWizard(models.TransientModel):
     def _perform_get_quote(self, clear_branch_lines=False):
         self.ensure_one()
         self.rates_feedback = False
+        self.envia_package_preview = False
+        self.envia_package_sync_hint = False
         self._validate_before_quote()
         preserved_service_id = False
         if not clear_branch_lines:
@@ -2597,6 +2729,10 @@ class EnviaQuoteWizard(models.TransientModel):
         destination_contact = self._build_contact_for_side("destination")
         expected_drop_off = self._expected_route_drop_off()
         mapper = PayloadMapper()
+        items = mapper.quote_items_for_context(
+            self.sale_order_id,
+            self.picking_id,
+        )
         request = mapper.build_quote_request_from_values(
             {
                 "origin_postal_code": self.origin_postal_code,
@@ -2606,6 +2742,7 @@ class EnviaQuoteWizard(models.TransientModel):
                 "destination_country": self.destination_country_id.code,
                 "destination_state": self._side_envia_state("destination", destination_contact),
                 "weight": self.weight,
+                "weight_unit": PayloadMapper.envia_weight_unit(self.env),
                 "content": self.content,
                 "declared_value": self.declared_value,
                 "currency": self.currency_id.name,
@@ -2613,13 +2750,11 @@ class EnviaQuoteWizard(models.TransientModel):
                 "expected_drop_off": expected_drop_off,
                 "origin_contact": origin_contact,
                 "destination_contact": destination_contact,
-                "items": mapper.quote_items_for_context(
-                    self.sale_order_id,
-                    self.picking_id,
-                ),
+                "items": items,
             }
         )
         adapter = get_envia_adapter(company)
+        self._apply_package_dimensions_preview(adapter, items)
         response = adapter.quote(request)
         quote = self.env["envia.quote"].create_from_api_response(
             response,
@@ -2826,6 +2961,8 @@ class EnviaQuoteWizard(models.TransientModel):
         self._seed_scalar_fields_from_quote(quote)
         self._seed_branches_from_quote(quote)
         self._seed_service_lines_from_quote(quote)
+        # Quote destination may be stale after Delivery Address changes.
+        self._apply_sale_order_destination()
 
     def _seed_branches_from_quote(self, quote):
         """Rebuild pickup options from the persisted quote (skip branch API)."""
@@ -2970,8 +3107,8 @@ class EnviaQuoteWizard(models.TransientModel):
         self.ensure_one()
         if not self.sale_order_id:
             raise UserError(_("Open this wizard from a sale order to apply shipping cost."))
-        if self.sale_order_id.state not in ("draft", "sent"):
-            raise UserError(_("Shipping cost can only be applied before the sale order is confirmed."))
+        if self.sale_order_id.state == "cancel":
+            raise UserError(_("Shipping cost cannot be applied on a cancelled sale order."))
         self._finalize_quote_selection()
         self.sale_order_id._sync_envia_shipping_line()
         return {"type": "ir.actions.act_window_close"}

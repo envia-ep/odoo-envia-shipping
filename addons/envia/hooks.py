@@ -373,6 +373,7 @@ def _envia_settings_view_terms_es() -> dict[str, str]:
             "Clave API que Envia.com usa para llamar a Odoo. Genérala aquí y cópiala en la "
             "configuración de integración de Envia.com."
         ),
+        "Add origin address": "Agregar dirección de origen",
         "Bearer token for api.envia.com (quoting, labels, tracking). Saved automatically by Envia.com during integration.": (
             "Token Bearer para api.envia.com (cotización, etiquetas, rastreo). Se guarda automáticamente "
             "durante la integración con Envia.com."
@@ -385,11 +386,18 @@ def _envia_settings_view_terms_es() -> dict[str, str]:
         ),
         "Connected": "Conectado",
         "Connection": "Conexión",
+        "Create and link the shop origin address in Envia.": (
+            "Crea y vincula la dirección de origen de la tienda en Envia."
+        ),
         "Default carriers": "Transportistas predeterminados",
         "Default origin and carriers used when quoting from sales orders and Add shipping.": (
             "Origen y transportistas predeterminados al cotizar desde pedidos de venta y Agregar envío."
         ),
+        "Default origin used when quoting from sales orders and Add shipping.": (
+            "Origen predeterminado al cotizar desde pedidos de venta y Agregar envío."
+        ),
         "Default ship-from address": "Dirección de origen predeterminada",
+        "Default ship-from warehouse": "Almacén de origen predeterminado",
         "Enable branch pickup and delivery": "Habilitar sucursales",
         "Envia shipping token": "Token de envío Envia",
         "Generate a key to configure the Envia.com callback.": (
@@ -399,15 +407,26 @@ def _envia_settings_view_terms_es() -> dict[str, str]:
         "Link your Odoo store with Envia.com and manage integration credentials.": (
             "Vincula tu tienda Odoo con Envia.com y gestiona las credenciales de integración."
         ),
+        "Linked contact:": "Contacto vinculado:",
         "Module": "Módulo",
         "No token stored yet. Complete the Envia.com connection or wait for the integration callback.": (
             "Aún no hay token guardado. Completa la conexión con Envia.com o espera el callback de integración."
         ),
         "Not connected": "No conectado",
         "Odoo API key": "Clave API de Odoo",
+        "Open the Envia address form, save a new origin address, and set it as the shop default.": (
+            "Abre el formulario de dirección de Envia, guarda una nueva dirección de origen y "
+            "defínela como predeterminada de la tienda."
+        ),
+        "Origin address": "Dirección de origen",
         "Origin for Envia quotes. Must include street, city, postal code, country, phone and email. Destination comes from the customer delivery address on the order.": (
             "Origen para cotizaciones Envia. Debe incluir calle, ciudad, código postal, país, teléfono y "
             "correo. El destino proviene de la dirección de entrega del cliente en el pedido."
+        ),
+        "Origin for Envia quotes. Uses the warehouse address (linked contact). Must include street, city, postal code, country, phone and email. Destination comes from the customer delivery address on the order.": (
+            "Origen para cotizaciones Envia. Usa la dirección del almacén (contacto vinculado). Debe "
+            "incluir calle, ciudad, código postal, país, teléfono y correo. El destino proviene de la "
+            "dirección de entrega del cliente en el pedido."
         ),
         "Plugin": "Plugin",
         "Pre-select Envia.com in Add shipping on sale orders.": (

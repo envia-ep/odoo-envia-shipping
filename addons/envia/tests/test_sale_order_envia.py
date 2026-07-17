@@ -541,6 +541,374 @@ class TestSaleOrderEnvia(TransactionCase):
         self.assertEqual(wizard.origin_postal_code, alt_warehouse.partner_id.zip)
         self.assertEqual(wizard.origin_city, alt_warehouse.partner_id.city)
 
+    def test_sale_order_origin_uses_delivery_warehouse(self):
+        mexico = self.env.ref("base.mx")
+        partner = self.env.company.partner_id
+        product = self.env["product.product"].create(
+            {"name": "Origin WH Merchandise", "sale_ok": True, "list_price": 10.0}
+        )
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": partner.id,
+                "partner_invoice_id": partner.id,
+                "partner_shipping_id": partner.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        delivery_warehouse = order.warehouse_id
+        self.assertTrue(delivery_warehouse)
+        other_partner = self.env["res.partner"].create(
+            {
+                "name": "Company Default WH Address",
+                "street": "Calle Default 1",
+                "city": "Monterrey",
+                "zip": "64000",
+                "country_id": mexico.id,
+                "state_id": self.env.ref("base.state_mx_nl").id,
+            }
+        )
+        other_warehouse = self.env["stock.warehouse"].create(
+            {
+                "name": "Company Default WH",
+                "code": "CDWH",
+                "company_id": self.env.company.id,
+                "partner_id": other_partner.id,
+            }
+        )
+        self.env.company.envia_default_origin_warehouse_id = other_warehouse
+        defaults = self.env["envia.quote.wizard"].with_context(
+            default_sale_order_id=order.id,
+        ).default_get(["origin_warehouse_id", "sale_order_id"])
+        self.assertEqual(defaults["origin_warehouse_id"], delivery_warehouse.id)
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["envia.quote.wizard"].with_context(
+                envia_skip_branch_autoload=True,
+            ).create({"sale_order_id": order.id})
+        self.assertEqual(wizard.origin_warehouse_id, delivery_warehouse)
+        self.assertFalse(wizard.origin_readonly)
+        self.assertTrue(wizard.destination_partner_readonly)
+        self.assertEqual(wizard.destination_partner_id, order.partner_shipping_id)
+
+    def test_sale_order_destination_uses_delivery_address(self):
+        mexico = self.env.ref("base.mx")
+        customer = self.env["res.partner"].create(
+            {
+                "name": "SO Customer",
+                "street": "Av Cliente 1",
+                "city": "CDMX",
+                "zip": "06600",
+                "country_id": mexico.id,
+                "state_id": self.env.ref("base.state_mx_df").id,
+            }
+        )
+        delivery = self.env["res.partner"].create(
+            {
+                "name": "Delivery Address Partner",
+                "type": "delivery",
+                "parent_id": customer.id,
+                "street": "Calle Entrega 9",
+                "city": "Guadalajara",
+                "zip": "44100",
+                "country_id": mexico.id,
+                "state_id": self.env.ref("base.state_mx_jal").id,
+            }
+        )
+        product = self.env["product.product"].create(
+            {"name": "Dest Addr Merchandise", "sale_ok": True, "list_price": 10.0}
+        )
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": customer.id,
+                "partner_invoice_id": customer.id,
+                "partner_shipping_id": delivery.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        defaults = self.env["envia.quote.wizard"].with_context(
+            default_sale_order_id=order.id,
+            default_destination_partner_id=customer.id,
+        ).default_get(["destination_partner_id", "sale_order_id"])
+        self.assertEqual(defaults["destination_partner_id"], delivery.id)
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["envia.quote.wizard"].with_context(
+                envia_skip_branch_autoload=True,
+            ).create(
+                {
+                    "sale_order_id": order.id,
+                    "destination_partner_id": customer.id,
+                }
+            )
+        self.assertEqual(wizard.destination_partner_id, delivery)
+        self.assertTrue(wizard.destination_partner_readonly)
+        self.assertEqual(wizard.destination_postal_code, delivery.zip)
+
+    def test_wizard_destination_updates_when_delivery_address_changes(self):
+        mexico = self.env.ref("base.mx")
+        customer = self.env["res.partner"].create(
+            {
+                "name": "Dest Sync Customer",
+                "street": "Av Vieja 1",
+                "city": "CDMX",
+                "zip": "06600",
+                "country_id": mexico.id,
+                "state_id": self.env.ref("base.state_mx_df").id,
+            }
+        )
+        new_delivery = self.env["res.partner"].create(
+            {
+                "name": "Dest Sync Delivery",
+                "type": "delivery",
+                "parent_id": customer.id,
+                "street": "Calle Nueva 9",
+                "city": "Guadalajara",
+                "zip": "44100",
+                "country_id": mexico.id,
+                "state_id": self.env.ref("base.state_mx_jal").id,
+            }
+        )
+        product = self.env["product.product"].create(
+            {"name": "Dest Sync Merchandise", "sale_ok": True, "list_price": 10.0}
+        )
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": customer.id,
+                "partner_invoice_id": customer.id,
+                "partner_shipping_id": customer.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["envia.quote.wizard"].with_context(
+                envia_skip_branch_autoload=True,
+            ).create({"sale_order_id": order.id})
+        self.assertEqual(wizard.destination_partner_id, customer)
+        order.partner_shipping_id = new_delivery
+        wizard._apply_sale_order_destination()
+        self.assertEqual(wizard.destination_partner_id, new_delivery)
+        self.assertEqual(wizard.destination_postal_code, new_delivery.zip)
+        self.assertEqual(wizard.destination_city, new_delivery.city)
+
+    def test_address_line_sync_after_destination_change_no_missing_error(self):
+        mexico = self.env.ref("base.mx")
+        customer = self.env["res.partner"].create(
+            {
+                "name": "Addr Sync Customer",
+                "street": "Av A 1",
+                "city": "CDMX",
+                "zip": "06600",
+                "country_id": mexico.id,
+            }
+        )
+        other = self.env["res.partner"].create(
+            {
+                "name": "Addr Sync Other",
+                "type": "delivery",
+                "parent_id": customer.id,
+                "street": "Av B 2",
+                "city": "Monterrey",
+                "zip": "64000",
+                "country_id": mexico.id,
+            }
+        )
+        product = self.env["product.product"].create(
+            {"name": "Addr Sync Merchandise", "sale_ok": True, "list_price": 10.0}
+        )
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": customer.id,
+                "partner_invoice_id": customer.id,
+                "partner_shipping_id": customer.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["envia.quote.wizard"].with_context(
+                envia_skip_branch_autoload=True,
+            ).create({"sale_order_id": order.id})
+        wizard._sync_address_lines("destination")
+        order.partner_shipping_id = other
+        # Changing destination partner reshuffles address options; must not crash.
+        wizard._apply_sale_order_destination()
+        wizard._sync_address_lines("destination")
+        self.assertEqual(wizard.destination_partner_id, other)
+        self.assertTrue(wizard.destination_address_line_ids)
+
+    def test_confirmed_sale_locks_origin_only(self):
+        partner = self.env.company.partner_id
+        product = self.env["product.product"].create(
+            {
+                "name": "Origin Lock Merchandise",
+                "sale_ok": True,
+                "type": "service",
+                "list_price": 10.0,
+            }
+        )
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": partner.id,
+                "partner_invoice_id": partner.id,
+                "partner_shipping_id": partner.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        order.action_confirm()
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["envia.quote.wizard"].with_context(
+                envia_skip_branch_autoload=True,
+            ).create(
+                {
+                    "sale_order_id": order.id,
+                    "destination_partner_id": order.partner_shipping_id.id,
+                }
+            )
+        self.assertTrue(wizard.origin_readonly)
+        self.assertEqual(wizard.origin_warehouse_id, order.warehouse_id)
+        self.assertEqual(wizard.destination_partner_id, order.partner_shipping_id)
+
+    def test_changing_delivery_address_flags_envia_recompute(self):
+        mexico = self.env.ref("base.mx")
+        customer = self.env["res.partner"].create(
+            {
+                "name": "Ship Recompute Customer",
+                "street": "Av Uno 1",
+                "city": "CDMX",
+                "zip": "06600",
+                "country_id": mexico.id,
+            }
+        )
+        other_delivery = self.env["res.partner"].create(
+            {
+                "name": "Other Delivery",
+                "type": "delivery",
+                "parent_id": customer.id,
+                "street": "Calle Dos 2",
+                "city": "Monterrey",
+                "zip": "64000",
+                "country_id": mexico.id,
+            }
+        )
+        product = self.env["product.product"].create(
+            {"name": "Ship Recompute Merchandise", "sale_ok": True, "list_price": 10.0}
+        )
+        carrier = self.env.ref("envia.delivery_carrier_envia")
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": customer.id,
+                "partner_invoice_id": customer.id,
+                "partner_shipping_id": customer.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        order.set_delivery_line(carrier, 120.0)
+        order.envia_service_id = 23
+        self.assertTrue(order.order_line.filtered("is_delivery"))
+        self.assertEqual(order.carrier_id, carrier)
+        order.partner_shipping_id = other_delivery
+        # Native delivery style: keep shipping line, mark cost as stale.
+        self.assertTrue(order.order_line.filtered("is_delivery"))
+        self.assertEqual(order.carrier_id, carrier)
+        self.assertEqual(order.envia_service_id, 23)
+        self.assertTrue(order.recompute_delivery_price)
+
+    def test_update_shipping_with_recompute_clears_stale_rates(self):
+        mexico = self.env.ref("base.mx")
+        customer = self.env["res.partner"].create(
+            {
+                "name": "Stale Rate Customer",
+                "street": "Av Vieja 1",
+                "city": "CDMX",
+                "zip": "06600",
+                "country_id": mexico.id,
+                "state_id": self.env.ref("base.state_mx_df").id,
+            }
+        )
+        new_delivery = self.env["res.partner"].create(
+            {
+                "name": "Stale Rate Delivery",
+                "type": "delivery",
+                "parent_id": customer.id,
+                "street": "Calle Nueva 9",
+                "city": "Guadalajara",
+                "zip": "44100",
+                "country_id": mexico.id,
+                "state_id": self.env.ref("base.state_mx_jal").id,
+            }
+        )
+        product = self.env["product.product"].create(
+            {"name": "Stale Rate Merchandise", "sale_ok": True, "list_price": 10.0}
+        )
+        carrier = self.env.ref("envia.delivery_carrier_envia")
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": customer.id,
+                "partner_invoice_id": customer.id,
+                "partner_shipping_id": customer.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        quote = self.env["envia.quote"].create(
+            {
+                "sale_order_id": order.id,
+                "origin_postal_code": "67192",
+                "origin_country": "MX",
+                "destination_postal_code": "06600",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "estafeta:ground",
+                "carrier": "estafeta",
+                "carrier_name": "Estafeta",
+                "service_name": "Estafeta Terrestre",
+                "price": 120.0,
+                "currency_name": "MXN",
+                "is_selected": True,
+            }
+        )
+        quote.selected_service_id = service.id
+        order.set_delivery_line(carrier, 120.0)
+        order.partner_shipping_id = new_delivery
+        self.assertTrue(order.recompute_delivery_price)
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["choose.delivery.carrier"].with_context(
+                carrier_recompute=True,
+                envia_skip_branch_autoload=True,
+            ).create(
+                {
+                    "order_id": order.id,
+                    "carrier_id": carrier.id,
+                }
+            )
+        quote_wizard = wizard.envia_wizard_id
+        self.assertTrue(quote_wizard.is_seeded_from_order)
+        self.assertFalse(quote_wizard.service_line_ids)
+        self.assertFalse(wizard.envia_has_selected_rate)
+        self.assertEqual(quote_wizard.destination_partner_id, new_delivery)
+        self.assertEqual(quote_wizard.destination_postal_code, new_delivery.zip)
+
     def test_side_address_warning_uses_wizard_fields(self):
         mexico = self.env.ref("base.mx")
         partner = self.env["res.partner"].create(

@@ -1,5 +1,6 @@
 from . import delivery_carrier
 from . import envia_carrier
+from . import envia_warehouse_origin
 from . import ir_module_module
 from . import onboarding_onboarding
 from . import onboarding_onboarding_step
@@ -13,3 +14,4 @@ from . import envia_tracking_event
 from . import envia_shipment
 from . import sale_order
 from . import stock_picking
+from . import stock_warehouse

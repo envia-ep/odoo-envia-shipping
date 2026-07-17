@@ -717,6 +717,123 @@ class TestEnviaDeliveryCarrier(TransactionCase):
         selected = wizard.envia_wizard_id.service_line_ids.filtered("is_selected")
         self.assertEqual(selected.service_id, "fedex:1")
 
+    def test_update_shipping_get_rate_requests_all_carriers(self):
+        """Update shipping → Get rate must requote every carrier, not only the saved one."""
+        mx, state = self._mx_state()
+        quote = self.env["envia.quote"].create(
+            {
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+                "origin_partner_id": self.partner.id,
+                "destination_partner_id": self.partner.id,
+                "sale_order_id": self.order.id,
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+                "is_selected": True,
+            }
+        )
+        quote.selected_service_id = quote.service_ids[:1]
+        self.order.set_delivery_line(self.carrier, 120.0)
+        response = QuoteResponse(
+            quote_id="requote",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                ),
+                QuoteService(
+                    service_id="dhl:1",
+                    carrier="dhl",
+                    carrier_name="DHL",
+                    service_name="Express",
+                    price=99.0,
+                    currency=self.order.currency_id.name,
+                ),
+                QuoteService(
+                    service_id="estafeta:ground",
+                    carrier="estafeta",
+                    carrier_name="Estafeta",
+                    service_name="Terrestre",
+                    price=80.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        captured = {}
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.EnviaGeocodesClient"
+        ) as geocodes, patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            geocodes.return_value.lookup_zipcode.return_value = []
+            wizard = self.env["choose.delivery.carrier"].with_context(
+                carrier_recompute=True
+            ).create({"order_id": self.order.id, "carrier_id": self.carrier.id})
+            quote_wizard = wizard.envia_wizard_id
+            quote_wizard.write(
+                {
+                    "origin_partner_id": self.partner.id,
+                    "destination_partner_id": self.partner.id,
+                    "origin_street": "Origin",
+                    "destination_street": "Dest",
+                    "origin_city": "CDMX",
+                    "destination_city": "GDL",
+                    "origin_postal_code": "06600",
+                    "destination_postal_code": "44100",
+                    "origin_country_id": mx.id,
+                    "destination_country_id": mx.id,
+                    "origin_state_id": state.id,
+                    "destination_state_id": state.id,
+                }
+            )
+            # Simulate Update shipping: a prior rate is already selected.
+            if quote_wizard.service_line_ids:
+                quote_wizard.service_line_ids[:1].is_selected = True
+            else:
+                self.env["envia.quote.wizard.service"].create(
+                    {
+                        "wizard_id": quote_wizard.id,
+                        "service_id": "fedex:1",
+                        "carrier": "fedex",
+                        "carrier_name": "FedEx",
+                        "service_name": "Economy",
+                        "price": 120.0,
+                        "is_selected": True,
+                    }
+                )
+            self.assertEqual(quote_wizard._get_quote_carriers(), "all")
+
+            def _quote(request):
+                captured["carriers"] = request.carriers
+                return response
+
+            get_adapter.return_value.quote.side_effect = _quote
+            wizard.update_price()
+        self.assertEqual(captured.get("carriers"), "all")
+        carriers = set(wizard.envia_wizard_id.service_line_ids.mapped("carrier"))
+        self.assertEqual(carriers, {"fedex", "dhl", "estafeta"})
+        self.assertFalse(wizard.envia_wizard_id.service_line_ids.filtered("is_selected"))
+
     def test_choose_delivery_carrier_update_can_switch_cached_rate(self):
         quote = self.env["envia.quote"].create(
             {
@@ -1126,6 +1243,43 @@ class TestEnviaDeliveryCarrier(TransactionCase):
             get_adapter.return_value.quote.side_effect = _quote
             wizard._perform_get_quote()
         self.assertEqual(captured.get("expected_drop_off"), 2)
+
+    def test_get_quote_skips_package_dimensions_preview(self):
+        """Package dimensions preview is temporarily disabled (no Envia API call)."""
+        response = QuoteResponse(
+            quote_id="test",
+            services=[
+                QuoteService(
+                    service_id="fedex:1",
+                    carrier="fedex",
+                    carrier_name="FedEx",
+                    service_name="Economy",
+                    price=120.0,
+                    currency=self.order.currency_id.name,
+                ),
+            ],
+        )
+        wizard = self.env["envia.quote.wizard"].with_context(
+            envia_skip_branch_autoload=True,
+            envia_skip_auto_quote=True,
+        ).create(
+            {
+                "sale_order_id": self.order.id,
+                "destination_partner_id": self.order.partner_shipping_id.id,
+                "weight": 1.0,
+                "content": "Test",
+            }
+        )
+        with patch(
+            "odoo.addons.envia.wizards.envia_quote_wizard.get_envia_adapter"
+        ) as get_adapter:
+            adapter = get_adapter.return_value
+            adapter.quote.return_value = response
+            wizard._perform_get_quote()
+        adapter.fetch_package_dimensions.assert_not_called()
+        self.assertFalse(wizard.envia_package_preview)
+        self.assertFalse(wizard.envia_package_sync_hint)
+        self.assertEqual(len(wizard.service_line_ids), 1)
 
     def test_confirm_with_origin_pickup_without_origin_branch(self):
         # Origin=branch does not require selecting a concrete origin branch code.

@@ -30,6 +30,10 @@ class ChooseDeliveryCarrier(models.TransientModel):
         related="envia_wizard_id.origin_warehouse_id",
         readonly=False,
     )
+    envia_origin_readonly = fields.Boolean(related="envia_wizard_id.origin_readonly")
+    envia_destination_partner_readonly = fields.Boolean(
+        related="envia_wizard_id.destination_partner_readonly",
+    )
     envia_origin_linked_contact_display = fields.Char(
         related="envia_wizard_id.origin_linked_contact_display",
     )
@@ -132,6 +136,12 @@ class ChooseDeliveryCarrier(models.TransientModel):
     )
     envia_service_line_ids = fields.One2many(related="envia_wizard_id.service_line_ids")
     envia_rates_feedback = fields.Char(related="envia_wizard_id.rates_feedback")
+    envia_weight_warning = fields.Char(related="envia_wizard_id.weight_warning")
+    envia_origin_sync_warning = fields.Char(
+        related="envia_wizard_id.origin_envia_sync_warning"
+    )
+    envia_package_preview = fields.Text(related="envia_wizard_id.envia_package_preview")
+    envia_package_sync_hint = fields.Char(related="envia_wizard_id.envia_package_sync_hint")
     envia_enable_labels = fields.Boolean(related="order_id.company_id.envia_enable_labels")
     envia_show_quote_archive = fields.Boolean(related="order_id.company_id.envia_show_quote_archive")
     envia_enable_branches = fields.Boolean(compute="_compute_envia_company_options")
@@ -322,6 +332,7 @@ class ChooseDeliveryCarrier(models.TransientModel):
             quote_wizard = carrier_wizard.envia_wizard_id
             if not quote_wizard:
                 continue
+            quote_wizard._apply_sale_order_destination()
             quote_wizard._sync_partner_address_fields()
             for side in ("origin", "destination"):
                 if getattr(quote_wizard, f"{side}_state_id"):
@@ -345,10 +356,11 @@ class ChooseDeliveryCarrier(models.TransientModel):
         for wizard in self:
             if wizard.delivery_type != "envia":
                 continue
-            if wizard.envia_wizard_id:
-                continue
             order = wizard.order_id
             shipping = order.partner_shipping_id or order.partner_id if order.ids else False
+            if wizard.envia_wizard_id:
+                wizard.envia_wizard_id._apply_sale_order_destination()
+                continue
             wizard.envia_wizard_id = QuoteWizard.create(
                 {
                     "sale_order_id": order.id if order.ids else False,
@@ -369,6 +381,10 @@ class ChooseDeliveryCarrier(models.TransientModel):
             order = wizard.order_id
             if not order.ids:
                 continue
+            # Address/weight changed: keep route prefs, drop stale rates → Get rate.
+            if order.recompute_delivery_price:
+                wizard._envia_seed_stale_route_without_rates(quote_wizard, order)
+                continue
             saved_quote = order._get_restorable_envia_quote()
             if not saved_quote:
                 continue
@@ -382,6 +398,32 @@ class ChooseDeliveryCarrier(models.TransientModel):
             # Re-bind the Many2one so onchange/NewId keeps the restored wizard
             # (invalidate would drop the in-memory link on unsaved records).
             wizard.envia_wizard_id = quote_wizard
+
+    def _envia_seed_stale_route_without_rates(self, quote_wizard, order):
+        """Restore Ship/Pickup prefs but force a fresh Get rate for the new destination."""
+        self.ensure_one()
+        saved_quote = order._get_restorable_envia_quote()
+        if saved_quote and not quote_wizard._is_restored_from_quote(saved_quote):
+            quote_wizard._seed_scalar_fields_from_quote(saved_quote)
+        quote_wizard._apply_sale_order_destination()
+        skip = {
+            "envia_skip_auto_quote": True,
+            "envia_skip_branch_autoload": True,
+            "envia_skip_address_sync": True,
+        }
+        quote_wizard.with_context(**skip)._clear_quote_results()
+        if quote_wizard.origin_branch_line_ids or quote_wizard.destination_branch_line_ids:
+            quote_wizard._clear_branch_lines()
+        quote_wizard.is_seeded_from_order = True
+        self.write(
+            {
+                "delivery_price": 0.0,
+                "display_price": 0.0,
+                "envia_has_selected_rate": False,
+                "delivery_message": False,
+            }
+        )
+        self.envia_wizard_id = quote_wizard
 
     def _envia_reopen_action(self):
         self.ensure_one()
@@ -456,12 +498,17 @@ class ChooseDeliveryCarrier(models.TransientModel):
             return super().update_price()
         self._ensure_envia_wizard()
         self._prepare_envia_quote_wizard()
+        quote_wizard = self.envia_wizard_id
+        # Update shipping: requote every carrier unless destination ocurre is active.
+        # Clear the prior selection so Get rate does not look like "refresh current method".
+        if quote_wizard.destination_location_type != "branch" and quote_wizard.service_line_ids:
+            quote_wizard.service_line_ids.write({"is_selected": False})
         try:
-            # Branch-first: keep the branches the user already picked; the selected
-            # branch fixes the carrier this quote is restricted to.
-            self.envia_wizard_id.action_get_quote(clear_branch_lines=False)
+            # Keep branches when ocurre is in use; branch selection still locks carrier.
+            quote_wizard.action_get_quote(clear_branch_lines=False)
         except UserError as error:
             raise UserError(str(error)) from error
+        self._sync_delivery_price_from_envia()
         return self._envia_reopen_action()
 
     def action_envia_select_service(self, service_id=None):

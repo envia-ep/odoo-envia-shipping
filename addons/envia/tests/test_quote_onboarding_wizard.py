@@ -101,3 +101,45 @@ class TestEnviaQuoteOnboardingWizard(TransactionCase):
         )
         # Branch-first: the selected pickup branch fixes the carrier to quote.
         self.assertEqual(wizard._get_quote_carriers(), "estafeta")
+
+    def test_get_quote_carriers_ignores_selected_rate_without_branch(self):
+        """Re-quote after picking a rate must still request all carriers."""
+        wizard = self.env["envia.quote.wizard"].create(
+            {
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+            }
+        )
+        self.env["envia.quote.wizard.service"].create(
+            {
+                "wizard_id": wizard.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 100.0,
+                "is_selected": True,
+            }
+        )
+        self.assertEqual(wizard._pickup_carrier_code(), "fedex")
+        self.assertEqual(wizard._get_quote_carriers(), "all")
+
+    def test_get_quote_carriers_ignores_stale_branch_on_address_route(self):
+        """Update shipping can leave a selected branch line after switching to Ship."""
+        wizard = self.env["envia.quote.wizard"].create(
+            {
+                "origin_location_type": "address",
+                "destination_location_type": "address",
+            }
+        )
+        self.env["envia.quote.wizard.branch"].create(
+            {
+                "wizard_id": wizard.id,
+                "side": "destination",
+                "name": "Stale Estafeta",
+                "carrier": "estafeta",
+                "is_selected": True,
+            }
+        )
+        self.assertEqual(wizard._pickup_carrier_code(), "estafeta")
+        self.assertEqual(wizard._get_quote_carriers(), "all")

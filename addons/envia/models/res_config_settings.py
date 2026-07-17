@@ -35,6 +35,10 @@ class ResConfigSettings(models.TransientModel):
         compute="_compute_envia_default_origin_display",
         readonly=True,
     )
+    envia_warehouse_origin_ids = fields.One2many(
+        related="company_id.envia_warehouse_origin_ids",
+        readonly=False,
+    )
     envia_enable_branches = fields.Boolean(
         related="company_id.envia_enable_branches",
         readonly=False,
@@ -333,6 +337,14 @@ class ResConfigSettings(models.TransientModel):
     def action_open_envia_plugin_connect_wizard(self):
         self.ensure_one()
         return self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()
+
+    def action_open_envia_billing_info_wizard(self):
+        self.ensure_one()
+        return self.env["envia.billing.info.wizard"].action_open_billing_info_wizard()
+
+    def action_open_envia_warehouse_origin_wizard(self):
+        self.ensure_one()
+        return self.env["envia.warehouse.origin.wizard"].action_open_wizard()
 
     def action_envia_refresh_integration_token(self):
         self.ensure_one()

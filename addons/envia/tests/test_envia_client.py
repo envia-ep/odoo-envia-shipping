@@ -99,6 +99,111 @@ class TestEnviaClient(TransactionCase):
             {"type": 2, "zipcode": "64060", "allBranch": False},
         )
 
+    @patch("odoo.addons.envia.services.envia_client.requests.post")
+    def test_post_accepts_optional_base_url(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"success": True, "packages": []},
+            text='{"success": true}',
+        )
+        client = EnviaClient("https://api-test.envia.com/", "shipping-token")
+        body = client.post(
+            "package/dimensions/test/34084",
+            {"items": [], "currency": "MXN"},
+            base_url="https://ecommerce-private.envia.com/",
+        )
+        self.assertTrue(body["success"])
+        self.assertEqual(
+            mock_post.call_args.args[0],
+            "https://ecommerce-private.envia.com/package/dimensions/test/34084",
+        )
+
+    @patch("odoo.addons.envia.services.envia_client.requests.get")
+    def test_get_generic_form_returns_field_list_without_auth(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: [
+                {
+                    "fieldId": "nombre",
+                    "dataName": "name",
+                    "fieldLabel": "Nombre",
+                    "dataType": "text",
+                    "visible": True,
+                    "rules": {"required": True},
+                },
+                {
+                    "fieldId": "rfc",
+                    "dataName": "rfc",
+                    "fieldLabel": "RFC",
+                    "dataType": "text",
+                    "visible": True,
+                    "rules": {"required": True},
+                },
+            ],
+            text="[]",
+        )
+        fields = EnviaClient.get_generic_form(
+            "https://queries-test.envia.com/",
+            "MX",
+            form="address_info",
+        )
+        self.assertEqual(len(fields), 2)
+        self.assertEqual(fields[0]["fieldId"], "nombre")
+        self.assertEqual(
+            mock_get.call_args.args[0],
+            "https://queries-test.envia.com/generic-form",
+        )
+        self.assertEqual(
+            mock_get.call_args.kwargs["params"],
+            {"country_code": "MX", "form": "address_info"},
+        )
+        self.assertNotIn("Authorization", mock_get.call_args.kwargs["headers"])
+
+    @patch("odoo.addons.envia.services.envia_client.requests.get")
+    def test_get_generic_form_rejects_non_list_payload(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"fields": []},
+            text='{"fields": []}',
+        )
+        with self.assertRaises(UserError):
+            EnviaClient.get_generic_form("https://queries-test.envia.com/", "MX")
+
+    @patch("odoo.addons.envia.services.envia_client.requests.get")
+    def test_get_states_returns_data_list(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "data": [
+                    {"name": "Antioquia", "code_2_digits": "AN", "country_code": "CO"},
+                ]
+            },
+            text='{"data": []}',
+        )
+        states = EnviaClient.get_states("https://queries-test.envia.com/", "CO")
+        self.assertEqual(len(states), 1)
+        self.assertEqual(
+            mock_get.call_args.args[0],
+            "https://queries-test.envia.com/state",
+        )
+        self.assertEqual(mock_get.call_args.kwargs["params"], {"country_code": "CO"})
+
+    @patch("odoo.addons.envia.services.envia_client.requests.get")
+    def test_get_provinces_returns_data_list(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "data": [{"name": "ABEJORRAL", "state_code": "AN", "code": "05002000"}]
+            },
+            text='{"data": []}',
+        )
+        provinces = EnviaClient.get_provinces("https://queries-test.envia.com/", "AN")
+        self.assertEqual(len(provinces), 1)
+        self.assertEqual(
+            mock_get.call_args.args[0],
+            "https://queries-test.envia.com/provinces/AN",
+        )
+
     def test_refine_branches_near_zip_prefers_exact_postal_code(self):
         branches = [
             {"branch_id": "A", "distance": 2, "address": {"postalCode": "67170"}},

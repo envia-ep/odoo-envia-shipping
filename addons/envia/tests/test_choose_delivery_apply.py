@@ -48,3 +48,52 @@ class TestChooseDeliveryApply(TransactionCase):
         self.assertEqual(len(shipping_line), 1)
         self.assertEqual(shipping_line.price_unit, 123.45)
 
+    def test_apply_shipping_on_confirmed_sale_order(self):
+        partner = self.env.company.partner_id
+        product = self.env["product.product"].create(
+            {
+                "name": "Confirmed Ship Merchandise",
+                "sale_ok": True,
+                "type": "service",
+                "list_price": 10.0,
+            }
+        )
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": partner.id,
+                "partner_invoice_id": partner.id,
+                "partner_shipping_id": partner.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        order.action_confirm()
+        self.assertEqual(order.state, "sale")
+        carrier = self.env.ref("envia.delivery_carrier_envia")
+        wizard = self.env["choose.delivery.carrier"].create(
+            {
+                "order_id": order.id,
+                "carrier_id": carrier.id,
+                "delivery_price": 88.0,
+            }
+        )
+        quote_wizard = wizard.envia_wizard_id
+        self.env["envia.quote.wizard.service"].create(
+            {
+                "wizard_id": quote_wizard.id,
+                "service_id": "estafeta:ground",
+                "carrier": "estafeta",
+                "carrier_name": "Estafeta",
+                "service_name": "Estafeta Terrestre",
+                "price": 88.0,
+                "currency_name": order.currency_id.name,
+                "is_selected": True,
+            }
+        )
+        with patch.object(type(quote_wizard), "_finalize_quote_selection"), patch.object(
+            type(wizard), "_sync_delivery_price_from_envia"
+        ):
+            wizard.button_confirm()
+        shipping_line = order.order_line.filtered("is_delivery")
+        self.assertEqual(len(shipping_line), 1)
+        self.assertEqual(order.carrier_id, carrier)
+        self.assertAlmostEqual(shipping_line.price_unit, 88.0)

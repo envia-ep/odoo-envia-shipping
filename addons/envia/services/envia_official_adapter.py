@@ -21,7 +21,11 @@ from .dto import (
 )
 from .envia_adapter_base import EnviaAdapterBase
 from .envia_client import EnviaApiError, EnviaClient
-from .envia_config import get_envia_checkout_path
+from .envia_config import (
+    get_envia_checkout_path,
+    get_envia_ecommerce_private_base_url,
+    get_envia_package_dimensions_path,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -29,18 +33,17 @@ _logger = logging.getLogger(__name__)
 class EnviaOfficialAdapter(EnviaAdapterBase):
     _MX_STATE_TO_ENVIA = {"CMX": "CX", "DIF": "CX", "DF": "CX", "NLE": "NL", "NUE": "NL"}
     _MX_ENVIA_TO_ODOO = ("CX", "CMX", "DIF", "DF")
-    # ponytail: Envia API still requires dimensions; fixed defaults, not user input.
-    _DEFAULT_PACKAGE_LENGTH = 30.0
-    _DEFAULT_PACKAGE_WIDTH = 20.0
-    _DEFAULT_PACKAGE_HEIGHT = 15.0
+    # ponytail: no product dims/UoM wired; never invent values — send null.
+    @staticmethod
+    def _package_dimensions() -> dict[str, float | None]:
+        return {"length": None, "width": None, "height": None}
 
-    @classmethod
-    def _default_package_dimensions(cls) -> dict[str, float]:
-        return {
-            "length": cls._DEFAULT_PACKAGE_LENGTH,
-            "width": cls._DEFAULT_PACKAGE_WIDTH,
-            "height": cls._DEFAULT_PACKAGE_HEIGHT,
-        }
+    @staticmethod
+    def _package_length_unit(dimensions: dict[str, float | None]) -> str | None:
+        if all(value is None for value in dimensions.values()):
+            return None
+        # No dimensional UoM source yet; do not invent "CM".
+        return None
 
     @classmethod
     def envia_state_code(cls, country_code: str | None, state_code: str | None) -> str:
@@ -103,6 +106,194 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             raw={"response": body, "carrier_errors": carrier_errors},
         )
 
+    def fetch_package_dimensions(
+        self,
+        items: list[ShipmentItem],
+        currency: str,
+        *,
+        odoo_weight: float | None = None,
+        auth_token: str | None = None,
+    ) -> tuple[str, str]:
+        """Preview packages Envia will use. Soft-fails to (preview_or_empty, hint).
+
+        Bearer = envia_api_token against ecommerce-api-new package/dimensions.
+        """
+        if not self.shop_id:
+            return "", _(
+                "Envia Shop ID is missing. Reconnect the Envia.com integration."
+            )
+        token = (auth_token or self.client.token or "").strip()
+        if not token:
+            return "", _(
+                "Envia API token is missing. Check Settings > Envia Shipping."
+            )
+        payload = EnviaOfficialAdapter.build_package_dimensions_payload(items, currency)
+        client = EnviaClient(get_envia_ecommerce_private_base_url(), token)
+        try:
+            body = client.post(
+                get_envia_package_dimensions_path(self.shop_id),
+                payload,
+            )
+        except (UserError, EnviaApiError) as error:
+            _logger.warning("Envia package dimensions preview failed: %s", error)
+            return "", _(
+                "Could not load Envia package dimensions preview: %s"
+            ) % error
+        if not isinstance(body, dict):
+            return "", _("Could not load Envia package dimensions preview.")
+        preview = EnviaOfficialAdapter.format_package_dimensions_preview(
+            body, items=items
+        )
+        hint = EnviaOfficialAdapter.package_dimensions_sync_hint(
+            body,
+            items=items,
+            odoo_weight=odoo_weight,
+        )
+        return preview, hint
+
+    @staticmethod
+    def build_package_dimensions_payload(
+        items: list[ShipmentItem],
+        currency: str,
+    ) -> dict[str, Any]:
+        payload_items = []
+        for item in items:
+            if item.product_id is None:
+                continue
+            quantity = item.quantity
+            if float(quantity).is_integer():
+                quantity = int(quantity)
+            payload_items.append(
+                {
+                    "productId": str(item.product_id),
+                    "variantId": None,
+                    "name": item.description or "",
+                    "quantity": quantity,
+                }
+            )
+        return {"items": payload_items, "currency": currency or ""}
+
+    @staticmethod
+    def _format_preview_item_lines(
+        items: list[ShipmentItem] | None,
+        weight_unit: str = "",
+    ) -> list[str]:
+        """One bullet per Odoo item; Envia often collapses these to 'Multiple products'."""
+        if not items:
+            return []
+        lines = []
+        for item in items:
+            name = (item.description or "").strip()
+            if not name:
+                continue
+            quantity = item.quantity
+            if float(quantity).is_integer():
+                quantity = int(quantity)
+            label = name if quantity == 1 else f"{name} ×{quantity}"
+            if item.weight not in (None, False):
+                line_weight = float(item.weight) * float(item.quantity)
+                weight_part = f"{line_weight:g}"
+                if weight_unit:
+                    weight_part = f"{weight_part} {weight_unit}"
+                label = f"{label} — {weight_part} (Odoo)"
+            lines.append(f"• {label}")
+        return lines
+
+    @staticmethod
+    def format_package_dimensions_preview(
+        body: dict[str, Any],
+        items: list[ShipmentItem] | None = None,
+    ) -> str:
+        packages = body.get("packages")
+        if not isinstance(packages, list) or not packages:
+            message = body.get("message")
+            return str(message) if message else ""
+        first_weight_unit = ""
+        for package in packages:
+            if isinstance(package, dict) and package.get("weight_unit"):
+                first_weight_unit = str(package.get("weight_unit"))
+                break
+        item_lines = EnviaOfficialAdapter._format_preview_item_lines(
+            items, weight_unit=first_weight_unit
+        )
+        lines = []
+        for package in packages:
+            if not isinstance(package, dict):
+                continue
+            name = package.get("name") or "Package"
+            length = package.get("length")
+            width = package.get("width")
+            height = package.get("height")
+            weight = package.get("weight")
+            length_unit = package.get("length_unit") or ""
+            weight_unit = package.get("weight_unit") or ""
+            content = package.get("content") or ""
+            dims = f"{length}x{width}x{height}"
+            if length_unit:
+                dims = f"{dims} {length_unit}"
+            weight_part = f"{weight}"
+            if weight_unit:
+                weight_part = f"{weight_part} {weight_unit}"
+            line = f"{name}: {dims}, {weight_part}"
+            if item_lines:
+                lines.append(line)
+                lines.extend(item_lines)
+                # Same item list applies to all Envia packages in this preview.
+                item_lines = []
+            elif content:
+                lines.append(f"{line} — {content}")
+            else:
+                lines.append(line)
+        return "\n".join(lines)
+
+    @staticmethod
+    def package_dimensions_sync_hint(
+        body: dict[str, Any],
+        *,
+        items: list[ShipmentItem] | None = None,
+        odoo_weight: float | None = None,
+    ) -> str:
+        """Warn only when Odoo weight disagrees with Envia package weight.
+
+        package_automatic / "Package Default" alone is not enough: Envia often
+        returns those flags even when Odoo products already have weight.
+        """
+        packages = body.get("packages") if isinstance(body.get("packages"), list) else []
+        envia_weight = 0.0
+        for package in packages:
+            if not isinstance(package, dict):
+                continue
+            try:
+                envia_weight += float(package.get("weight") or 0)
+            except (TypeError, ValueError):
+                continue
+        odoo_total = None
+        if items:
+            item_weights = [
+                (item.weight or 0.0) * item.quantity
+                for item in items
+                if item.weight not in (None, False)
+            ]
+            if item_weights:
+                odoo_total = sum(item_weights)
+        if odoo_total is None and odoo_weight is not None:
+            try:
+                odoo_total = float(odoo_weight)
+            except (TypeError, ValueError):
+                odoo_total = None
+        if odoo_total is None:
+            return ""
+        if abs(float(odoo_total) - envia_weight) <= 0.01:
+            return ""
+        return _(
+            "Envia package weight (%(envia)s) differs from Odoo (%(odoo)s). "
+            "If you changed product weight/dimensions in Odoo, open Envia and "
+            "sync package dimensions."
+        ) % {
+            "envia": envia_weight,
+            "odoo": odoo_total,
+        }
+
     @staticmethod
     def _build_no_rates_message(request: QuoteRequest, carrier_errors: list[str]) -> str:
         lines = [
@@ -146,7 +337,7 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
     def create_shipment(self, request: CreateShipmentRequest) -> CreateShipmentResponse:
         carrier, service = self._parse_service_id(request.service_id, request.carrier, request.service_name)
         declared_value = sum(item.price * item.quantity for item in request.items)
-        dimensions = EnviaOfficialAdapter._default_package_dimensions()
+        dimensions = EnviaOfficialAdapter._package_dimensions()
         payload = {
             "origin": self._contact_to_official_address(request.origin_contact),
             "destination": self._contact_to_official_address(request.destination_contact),
@@ -156,8 +347,8 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
                     "content": EnviaOfficialAdapter._normalize_package_content(request.package_content),
                     "amount": 1,
                     "declaredValue": declared_value or 0,
-                    "lengthUnit": "CM",
-                    "weightUnit": "KG",
+                    "lengthUnit": EnviaOfficialAdapter._package_length_unit(dimensions),
+                    "weightUnit": request.weight_unit,
                     "weight": request.package_weight or 1.0,
                     "dimensions": dimensions,
                 }
@@ -281,7 +472,7 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             request.destination_state,
         )
         declared_value = request.declared_value or 0
-        dimensions = EnviaOfficialAdapter._default_package_dimensions()
+        dimensions = EnviaOfficialAdapter._package_dimensions()
         return {
             "origin": origin,
             "destination": destination,
@@ -290,14 +481,10 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
                 "content": EnviaOfficialAdapter._normalize_package_content(request.content),
                 "amount": "1",
                 "type": "box",
-                "dimensions": {
-                    "length": str(dimensions["length"]),
-                    "width": str(dimensions["width"]),
-                    "height": str(dimensions["height"]),
-                },
+                "dimensions": dimensions,
                 "weight": str(request.weight),
-                "lengthUnit": "CM",
-                "weightUnit": "KG",
+                "lengthUnit": EnviaOfficialAdapter._package_length_unit(dimensions),
+                "weightUnit": request.weight_unit,
                 "insurance": "0",
                 "declaredValue": f"{declared_value:.2f}",
             },
@@ -334,7 +521,7 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
                 % {"index": index + 1}
             )
         product_id = str(odoo_product_id)
-        dimensions = EnviaOfficialAdapter._default_package_dimensions()
+        dimensions = EnviaOfficialAdapter._package_dimensions()
         return {
             "quantity": EnviaOfficialAdapter._checkout_str(item.quantity, money=False),
             "width": dimensions["width"],
@@ -352,7 +539,7 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
 
     @staticmethod
     def _default_checkout_item(request: QuoteRequest) -> dict[str, Any]:
-        dimensions = EnviaOfficialAdapter._default_package_dimensions()
+        dimensions = EnviaOfficialAdapter._package_dimensions()
         return {
             "quantity": "1",
             "width": dimensions["width"],
@@ -375,12 +562,22 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         return str(int(number)) if number == int(number) else str(number)
 
     @staticmethod
+    def _origin_address_id_payload(contact: Contact | None) -> dict[str, Any] | None:
+        address_id = (contact.address_id or "").strip() if contact else ""
+        if not address_id:
+            return None
+        return {"address_id": address_id}
+
+    @staticmethod
     def _checkout_address_from_request(
         contact: Contact | None,
         postal_code: str,
         country: str,
         state: str | None,
     ) -> dict[str, Any]:
+        by_id = EnviaOfficialAdapter._origin_address_id_payload(contact)
+        if by_id:
+            return by_id
         if contact:
             return EnviaOfficialAdapter._contact_to_checkout_address(contact)
         return {
@@ -399,6 +596,9 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
 
     @staticmethod
     def _contact_to_checkout_address(contact: Contact) -> dict[str, Any]:
+        by_id = EnviaOfficialAdapter._origin_address_id_payload(contact)
+        if by_id:
+            return by_id
         street, number = EnviaOfficialAdapter._split_street_and_number(
             contact.street,
             contact.number,
@@ -536,7 +736,7 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             request.destination_country,
             request.destination_state,
         )
-        dimensions = EnviaOfficialAdapter._default_package_dimensions()
+        dimensions = EnviaOfficialAdapter._package_dimensions()
         payload = {
             "origin": origin,
             "destination": destination,
@@ -546,8 +746,8 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
                     "content": EnviaOfficialAdapter._normalize_package_content(request.content),
                     "amount": 1,
                     "declaredValue": request.declared_value or 0,
-                    "lengthUnit": "CM",
-                    "weightUnit": "KG",
+                    "lengthUnit": EnviaOfficialAdapter._package_length_unit(dimensions),
+                    "weightUnit": request.weight_unit,
                     "weight": request.weight,
                     "dimensions": dimensions,
                 }
@@ -571,6 +771,9 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         country: str,
         state: str | None,
     ) -> dict[str, Any]:
+        by_id = EnviaOfficialAdapter._origin_address_id_payload(contact)
+        if by_id:
+            return by_id
         if contact:
             return EnviaOfficialAdapter._contact_to_official_address(contact)
         return {
@@ -603,6 +806,9 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
 
     @staticmethod
     def _contact_to_official_address(contact: Contact) -> dict[str, Any]:
+        by_id = EnviaOfficialAdapter._origin_address_id_payload(contact)
+        if by_id:
+            return by_id
         street, number = EnviaOfficialAdapter._split_street_and_number(
             contact.street,
             contact.number,
