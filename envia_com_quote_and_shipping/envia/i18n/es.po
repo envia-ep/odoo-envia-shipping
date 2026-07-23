@@ -1693,9 +1693,13 @@ msgstr "Datos de prueba de Envia cargados"
 #: model:ir.model.fields.selection,name:envia.selection__delivery_carrier__delivery_type__envia
 #: model:ir.ui.menu,name:envia.menu_envia_root
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
-#: model:ir.module.module,shortdesc:base.module_envia
 msgid "Envia.com"
 msgstr "Envia.com"
+
+#. module: envia
+#: model:ir.module.module,shortdesc:base.module_envia
+msgid "Envia.com Quote and Shipping"
+msgstr "Envia.com Cotización y Envíos"
 
 #. module: envia
 #. odoo-python
