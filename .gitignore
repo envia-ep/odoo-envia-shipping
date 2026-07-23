@@ -1,6 +1,26 @@
+# Python / OS
 __pycache__/
 *.py[cod]
 .DS_Store
-graphify-out/
-.cursor/
+
+# Local tooling (not part of the Apps package)
 .claude/
+.cursor/
+graphify-out/
+addons/
+addons-empty/
+dist/
+*.zip
+
+# Local development stack (kept on disk, not published)
+docker-compose.yml
+docker-compose.client-test.yml
+config/
+scripts/
+DOCUMENTATION.txt
+.cursorrules
+.graphifyignore
+
+# Dev-only Envia OAuth defaults (not loaded by the module)
+envia_com_quote_and_shipping/envia/data/envia_oauth_config_data_dev.xml
+envia_com_quote_and_shipping/envia/data/envia_oauth_config_data copy.xml
