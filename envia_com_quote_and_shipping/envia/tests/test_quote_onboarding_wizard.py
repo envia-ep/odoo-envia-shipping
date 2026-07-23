@@ -48,15 +48,6 @@ class TestEnviaQuoteOnboardingWizard(TransactionCase):
         self.assertFalse(wizard.picking_id)
         self.assertTrue(wizard.is_standalone)
 
-    def test_demo_order_dismisses_onboarding(self):
-        self.env.company.write({"envia_environment": "sandbox"})
-        wizard = self.env["envia.quote.onboarding.wizard"].create(
-            {"company_id": self.env.company.id}
-        )
-        action = wizard.action_open_demo_order()
-        self.assertFalse(self.env.company.envia_quote_onboarding_pending)
-        self.assertEqual(action["res_model"], "sale.order")
-
     def test_first_quote_dismisses_onboarding(self):
         self.env.company.write({"envia_quote_onboarding_pending": True})
         self.env["envia.quote"].create(

@@ -16,8 +16,20 @@ class TestEnviaQuoteOnboarding(TransactionCase):
         action = self.env["onboarding.onboarding.step"].action_open_step_envia_connect()
         self.assertEqual(action.get("type"), "ir.actions.act_window")
 
-        action = self.env["onboarding.onboarding.step"].action_open_step_envia_demo_order()
+        action = self.env["onboarding.onboarding.step"].action_open_step_envia_sale_order()
         self.assertEqual(action.get("res_model"), "sale.order")
+
+        partner = self.env.company.partner_id
+        product = self.env["product.product"].search([("sale_ok", "=", True)], limit=1)
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": partner.id,
+                "partner_invoice_id": partner.id,
+                "partner_shipping_id": partner.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
+        )
+        order.action_confirm()
 
         action = self.env["onboarding.onboarding.step"].action_open_step_envia_get_rates()
         self.assertEqual(action.get("res_model"), "choose.delivery.carrier")

@@ -76,9 +76,6 @@ credentials from Envia.com before release.
         "wizards/envia_billing_info_wizard_views.xml",
         "wizards/envia_warehouse_origin_wizard_views.xml",
     ],
-    "demo": [
-        "data/envia_demo_data.xml",
-    ],
     "assets": {
         "web.assets_backend": [
             "envia/static/src/scss/envia_wizards.scss",

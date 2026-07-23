@@ -427,21 +427,17 @@ class TestSaleOrderEnvia(TransactionCase):
         self.assertEqual(address["number"], "123")
 
     def test_quote_wizard_opens_in_modal_from_sale_order(self):
-        order = self.env["sale.order"].search(
-            [("client_order_ref", "=", "ENVIA-DEMO-QUOTE")], limit=1
+        partner = self.env.company.partner_id
+        product = self.env["product.product"].search([("sale_ok", "=", True)], limit=1)
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": partner.id,
+                "partner_invoice_id": partner.id,
+                "partner_shipping_id": partner.id,
+                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
+            }
         )
-        if not order:
-            partner = self.env.company.partner_id
-            product = self.env["product.product"].search([("sale_ok", "=", True)], limit=1)
-            order = self.env["sale.order"].create(
-                {
-                    "partner_id": partner.id,
-                    "partner_invoice_id": partner.id,
-                    "partner_shipping_id": partner.id,
-                    "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
-                }
-            )
-            order.action_confirm()
+        order.action_confirm()
 
         action = order.action_open_envia_quote_wizard()
         self.assertEqual(action["target"], "new")

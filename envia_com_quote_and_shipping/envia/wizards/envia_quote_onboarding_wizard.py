@@ -1,6 +1,4 @@
-from odoo import _, api, fields, models
-
-from ..hooks import load_envia_demo_data
+from odoo import api, fields, models
 
 
 class EnviaQuoteOnboardingWizard(models.TransientModel):
@@ -12,23 +10,10 @@ class EnviaQuoteOnboardingWizard(models.TransientModel):
         required=True,
         default=lambda self: self.env.company,
     )
-    is_sandbox = fields.Boolean(compute="_compute_is_sandbox")
-
-    @api.depends("company_id", "company_id.envia_environment")
-    def _compute_is_sandbox(self) -> None:
-        for wizard in self:
-            wizard.is_sandbox = wizard.company_id._envia_is_sandbox()
 
     def _dismiss(self) -> None:
         self.ensure_one()
         self.company_id.envia_quote_onboarding_pending = False
-
-    def action_open_demo_order(self):
-        self.ensure_one()
-        self._dismiss()
-        if self.is_sandbox:
-            load_envia_demo_data(self.env)
-        return self.env.ref("envia.action_envia_demo_sale_order").read()[0]
 
     def action_go_to_quotes(self):
         self.ensure_one()

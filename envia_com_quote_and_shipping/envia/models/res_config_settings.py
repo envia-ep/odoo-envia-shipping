@@ -326,10 +326,6 @@ class ResConfigSettings(models.TransientModel):
             },
         }
 
-    def action_load_envia_demo_data(self):
-        self.ensure_one()
-        return self.company_id.action_load_envia_demo_data()
-
     def action_open_envia_plugin_connect_wizard(self):
         self.ensure_one()
         return self.env["envia.plugin.connect.wizard"].action_open_connect_wizard()

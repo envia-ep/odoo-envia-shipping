@@ -2,7 +2,6 @@ from odoo import _, api, fields, models
 
 from odoo.exceptions import UserError
 
-from ..hooks import load_envia_demo_data
 from ..services.envia_config import (
     get_envia_api_base_url,
     get_envia_queries_base_url,
@@ -230,22 +229,6 @@ class ResCompany(models.Model):
         companies = super().create(vals_list)
         companies._initiate_envia_onboardings()
         return companies
-
-    def action_load_envia_demo_data(self):
-        load_envia_demo_data(self.env)
-        return {
-            "type": "ir.actions.client",
-            "tag": "display_notification",
-            "params": {
-                "title": _("Envia test data loaded"),
-                "message": _(
-                    "My Company, Envia Demo Customer, and a confirmed sale order "
-                    "are ready for quoting."
-                ),
-                "type": "success",
-                "sticky": False,
-            },
-        }
 
     def _envia_get_api_token(self) -> str:
         self.ensure_one()

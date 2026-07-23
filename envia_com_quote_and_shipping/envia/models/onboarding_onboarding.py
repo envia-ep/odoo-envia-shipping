@@ -14,10 +14,10 @@ class OnboardingOnboarding(models.Model):
         if company._envia_is_shipping_api_configured():
             step_model.action_validate_step("envia.onboarding_onboarding_step_connect")
         if self.env["sale.order"].search_count(
-            [("client_order_ref", "=", "ENVIA-DEMO-QUOTE")],
+            [("state", "in", ("sale", "done"))],
             limit=1,
         ):
-            step_model.action_validate_step("envia.onboarding_onboarding_step_demo_order")
+            step_model.action_validate_step("envia.onboarding_onboarding_step_sale_order")
         if self.env["envia.quote"].search_count([("company_id", "=", company.id)], limit=1):
             step_model.action_validate_step("envia.onboarding_onboarding_step_get_rates")
         if self.env["envia.shipment"].search_count([("company_id", "=", company.id)], limit=1):

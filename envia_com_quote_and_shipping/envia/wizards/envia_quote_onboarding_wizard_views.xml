@@ -6,7 +6,6 @@
         <field name="arch" type="xml">
             <form string="How to Quote with Envia" class="o_envia_plugin_connect_wizard">
                 <field name="company_id" invisible="1"/>
-                <field name="is_sandbox" invisible="1"/>
 
                 <sheet>
                     <div class="o_envia_welcome_screen">
@@ -63,24 +62,10 @@
                                 </div>
                             </div>
 
-                            <div class="o_envia_welcome_store_preview text-start mb-4"
-                                 invisible="not is_sandbox">
-                                <div class="o_envia_welcome_store_label">Sandbox tip</div>
-                                <div class="text-muted small">
-                                    Try the demo order first. It includes sample addresses
-                                    and is ready for quoting in sandbox mode.
-                                </div>
-                            </div>
-
                             <div class="o_envia_welcome_actions d-flex flex-column flex-sm-row justify-content-center gap-2">
-                                <button name="action_open_demo_order" type="object"
-                                        string="Try demo order"
-                                        class="btn btn-primary btn-lg"
-                                        icon="fa-play"
-                                        invisible="not is_sandbox"/>
                                 <button name="action_go_to_quotes" type="object"
                                         string="Quote Shipment"
-                                        class="btn btn-secondary btn-lg"
+                                        class="btn btn-primary btn-lg"
                                         icon="fa-calculator"/>
                             </div>
                         </div>
@@ -88,14 +73,9 @@
                 </sheet>
 
                 <footer>
-                    <button name="action_open_demo_order" type="object"
-                            string="Try demo order"
-                            class="btn-primary"
-                            invisible="not is_sandbox"
-                            icon="fa-play"/>
                     <button name="action_go_to_quotes" type="object"
                             string="Quote Shipment"
-                            class="btn-secondary"
+                            class="btn-primary"
                             icon="fa-calculator"/>
                     <button string="Close" special="cancel" class="btn-secondary"/>
                 </footer>
