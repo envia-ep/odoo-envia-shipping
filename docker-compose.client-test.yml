@@ -1,8 +1,0 @@
-# Client install simulation: empty addons mount (no dev source tree).
-# Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.client-test.yml up -d
-# Import dist/envia-*.zip from Apps, then restart Odoo (envia_http is server-wide).
-services:
-  odoo:
-    volumes:
-      - ./addons-empty:/mnt/extra-addons
