@@ -2,7 +2,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from ..services.envia_client import EnviaClient
-from ..services.envia_config import get_envia_environment_from_config
+from ..services.envia_config import resolve_envia_environment
 from ..services.envia_integration_callback import build_callback_url, get_integration_database_name
 from ..services.envia_oauth_client import EnviaOauthClient
 from ..services.envia_plugin_setup import (
@@ -16,7 +16,7 @@ from ..services.envia_plugin_setup import (
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
-    envia_environment = fields.Selection(related="company_id.envia_environment", readonly=False)
+    envia_environment = fields.Selection(related="company_id.envia_environment", readonly=True)
     envia_api_token = fields.Char(related="company_id.envia_api_token", readonly=True)
     envia_base_url = fields.Char(related="company_id.envia_base_url", readonly=False)
     envia_default_carriers = fields.Char(related="company_id.envia_default_carriers", readonly=True)
@@ -217,11 +217,7 @@ class ResConfigSettings(models.TransientModel):
         for record in self:
             company = record.company_id
             record.envia_effective_base_url = company._envia_get_base_url() if company else ""
-            if company:
-                record.envia_is_sandbox = company._envia_is_sandbox()
-            else:
-                config_env = get_envia_environment_from_config(record.env)
-                record.envia_is_sandbox = config_env == "sandbox" if config_env else False
+            record.envia_is_sandbox = resolve_envia_environment(company) == "sandbox"
             record.envia_is_production = not record.envia_is_sandbox
             record.envia_has_api_token = record.company_id._envia_is_shipping_api_configured()
 

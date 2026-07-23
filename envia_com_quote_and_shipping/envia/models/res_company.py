@@ -5,7 +5,6 @@ from odoo.exceptions import UserError
 from ..hooks import load_envia_demo_data
 from ..services.envia_config import (
     get_envia_api_base_url,
-    get_envia_environment_from_config,
     get_envia_queries_base_url,
     is_envia_sandbox,
     resolve_envia_environment,
@@ -29,12 +28,9 @@ class ResCompany(models.Model):
             ("production", "Production"),
         ],
         string="Envia Environment",
-        default=lambda self: self._default_envia_environment(),
+        default="production",
+        help="Deprecated: URLs follow ENVIA_ENVIRONMENT on the server (production by default).",
     )
-
-    @api.model
-    def _default_envia_environment(self):
-        return get_envia_environment_from_config(self.env) or False
     envia_api_token = fields.Char(string="Envia API Token")
     envia_base_url = fields.Char(
         string="Envia Base URL",

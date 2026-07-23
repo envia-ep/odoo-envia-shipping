@@ -244,7 +244,6 @@ def load_envia_demo_data(env):
         {
             "country_id": mexico.id,
             "envia_default_origin_warehouse_id": warehouse.id if warehouse else False,
-            "envia_environment": "sandbox",
             "envia_default_carrier": True,
         }
     )

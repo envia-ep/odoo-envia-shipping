@@ -14,7 +14,6 @@
     <record id="base.main_company" model="res.company">
         <field name="country_id" ref="base.mx"/>
         <field name="envia_default_origin_warehouse_id" ref="stock.warehouse0"/>
-        <field name="envia_environment">sandbox</field>
         <field name="envia_default_carrier">True</field>
         <field name="envia_default_carriers">dhl,fedex,estafeta</field>
     </record>

@@ -30,16 +30,19 @@ class TestEnviaConfig(TransactionCase):
         icp.set_param(ENVIA_ENVIRONMENT_PARAM, "sandbox")
         self.assertEqual(get_envia_environment_from_config(self.env), "sandbox")
 
-    def test_resolve_envia_environment_uses_company_field_by_default(self):
+    def test_resolve_envia_environment_defaults_to_production(self):
         company = self.env.company
-        company.envia_environment = "production"
-        self.assertEqual(resolve_envia_environment(company), "production")
+        company.envia_environment = "sandbox"
+        with patch.dict("os.environ", {"ENVIA_ENVIRONMENT": ""}, clear=False):
+            self.assertEqual(resolve_envia_environment(company), "production")
+            self.assertFalse(is_envia_sandbox(company))
 
-    def test_resolve_envia_environment_uses_config_when_company_field_empty(self):
+    def test_resolve_envia_environment_ignores_company_and_config(self):
         company = self.env.company
-        self.env["ir.config_parameter"].sudo().set_param(ENVIA_ENVIRONMENT_PARAM, "production")
-        company.envia_environment = False
-        self.assertEqual(resolve_envia_environment(company), "production")
+        self.env["ir.config_parameter"].sudo().set_param(ENVIA_ENVIRONMENT_PARAM, "sandbox")
+        company.envia_environment = "sandbox"
+        with patch.dict("os.environ", {"ENVIA_ENVIRONMENT": ""}, clear=False):
+            self.assertEqual(resolve_envia_environment(company), "production")
 
     def test_new_company_default_envia_environment_from_config(self):
         self.env["ir.config_parameter"].sudo().set_param(ENVIA_ENVIRONMENT_PARAM, "production")
@@ -63,6 +66,17 @@ class TestEnviaConfig(TransactionCase):
         company.envia_environment = "production"
         self.assertEqual(get_envia_api_base_url(company), "https://api-test.envia.com/")
         self.assertEqual(get_envia_queries_base_url(company), "https://queries-test.envia.com/")
+
+    @patch.dict(
+        "os.environ",
+        {"ENVIA_ENVIRONMENT": "", "ENVIA_API_BASE_URL": "", "ENVIA_QUERIES_BASE_URL": ""},
+        clear=False,
+    )
+    def test_resolve_defaults_to_production_urls(self):
+        company = self.env.company
+        company.write({"envia_environment": "sandbox", "envia_base_url": False})
+        self.assertEqual(get_envia_api_base_url(company), "https://api-clients.envia.com/")
+        self.assertEqual(get_envia_queries_base_url(company), "https://queries.envia.com/")
 
     @patch.dict(
         "os.environ",

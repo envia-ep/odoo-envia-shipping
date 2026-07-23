@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import os
 
-from odoo import _
-from odoo.exceptions import UserError
-
 ENVIA_ENVIRONMENT_ENV = "ENVIA_ENVIRONMENT"
 ENVIA_ENVIRONMENT_PARAM = "envia.environment"
 API_BASE_URL_ENV = "ENVIA_API_BASE_URL"
@@ -37,20 +34,15 @@ def get_envia_environment_from_config(env) -> str | None:
     return None
 
 
-def resolve_envia_environment(company) -> str:
+def resolve_envia_environment(company=None) -> str:
+    """Production for all installs; sandbox only via ``ENVIA_ENVIRONMENT`` (Docker/dev).
+
+    Company / Settings must not switch environments — end users always hit prod URLs
+    unless the server process sets ``ENVIA_*`` env vars.
+    """
     if env_value := get_envia_environment_from_env():
         return env_value
-    if company.envia_environment:
-        return company.envia_environment
-    if config_value := get_envia_environment_from_config(company.env):
-        return config_value
-    raise UserError(
-        _(
-            "Envia environment is not configured. Set system parameter %s "
-            "(module data) or company Envia Environment in Settings."
-        )
-        % ENVIA_ENVIRONMENT_PARAM
-    )
+    return "production"
 
 
 def is_envia_sandbox(company) -> bool:

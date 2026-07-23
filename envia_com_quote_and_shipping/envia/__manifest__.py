@@ -30,10 +30,10 @@ Not compatible with standard **Odoo Online** (odoo.com SaaS).
 OAuth endpoints
 ---------------
 
-This package ships Envia.com **production** environment defaults in module data.
-Developers can override with ``ENVIA_ENVIRONMENT=sandbox`` and related ``ENVIA_*``
-env vars. OAuth URLs in module data must use production client credentials from
-Envia.com before release.
+This package always uses Envia.com **production** API hosts.
+Developers override with ``ENVIA_ENVIRONMENT=sandbox`` and related ``ENVIA_*``
+env vars (e.g. Docker). OAuth URLs in module data must use production client
+credentials from Envia.com before release.
     """,
     "author": "Envia.com",
     "website": "https://envia.com",
