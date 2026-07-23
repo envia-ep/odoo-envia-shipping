@@ -1,79 +1,102 @@
-# Odoo Live Shipping Rates
+# Envia.com Quote and Shipping
 
-Odoo 19 integration with [Envia.com](https://envia.com) for live shipping rate quotes, shipment creation, label generation, and tracking.
+Odoo 19 addons package that connects your store with [Envia.com](https://envia.com)
+for live carrier rates on sales orders (native **Add shipping** flow).
 
-## Overview
+## Description
 
-This repository provides a local development environment and a custom Odoo application module that connects your store to Envia.com shipping services.
+The package contains two installable addons that must stay on the same
+`addons_path`:
 
-**Planned capabilities:**
+| Technical name | Display name | Role |
+| --- | --- | --- |
+| `envia` | Envia.com Quote and Shipping | Main application: UI, settings, OAuth wizards, quotes, and `delivery.carrier` rates. |
+| `envia_http` | Envia HTTP Bridge | Hidden technical bridge: HTTP/RPC entry points loaded **before** a database is selected. |
 
-- OAuth connection to Envia.com
-- Multi-carrier shipping rate quotes
-- Shipment creation and label download
-- Shipment tracking (manual and scheduled sync)
-- Guided onboarding for first-time setup
+`envia` depends on `envia_http`. From Apps, install only **Envia.com** (`envia`);
+Odoo installs `envia_http` and other Python dependencies automatically.
+That is **not** enough for OAuth: a server administrator must also list
+`envia_http` in `server_wide_modules` and restart Odoo so nodb routes exist.
 
-## Tech Stack
+### `envia`
 
-| Component    | Version        |
-| ------------ | -------------- |
-| Odoo         | 19             |
-| PostgreSQL   | 16             |
-| Orchestration| Docker Compose |
+- **Category:** Inventory/Delivery
+- **Application:** yes (`application: True`)
+- **Depends:** `base`, `mail`, `onboarding`, `sale`, `stock`, `sale_stock`,
+  `delivery`, `website_sale`, `envia_http`
 
-## Repository Structure
+**Features**
 
-```
-.
-├── addons/           # Custom Odoo modules
-├── config/           # Odoo server configuration
-├── docker-compose.yml
-└── README.md
-```
+- OAuth connection between Odoo and Envia.com (plugin / welcome wizard).
+- Live shipping rates from Envia.com inside **Add shipping** on sale orders.
+- Compare carrier services (DHL, FedEx, Estafeta, Paquetexpress, and more).
+- Home delivery and branch pickup/drop-off routes.
+- Default origin address and preferred carriers in Settings.
+- Package weight from product master data for accurate quotes.
+- Shipping API token stored via the Envia.com integration callback.
 
-## Prerequisites
+Label creation and tracking are **not** included in this version.
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+### `envia_http`
 
-## Getting Started
+- **Category:** Hidden
+- **Application:** no
+- **Depends:** `web`
+- **Load mode:** must appear in `server_wide_modules` (see Installation)
 
-> Full setup instructions and the integration module are delivered via feature branches and merged into `main` through pull requests.
+Exposes Envia integration endpoints before a database is selected. Routes
+delegate to `envia` when that module is installed; otherwise they return HTTP
+503. Full route list and verification steps:
+[`envia_com_quote_and_shipping/envia_http/README.md`](envia_com_quote_and_shipping/envia_http/README.md).
 
-1. Clone the repository.
-2. Check out the relevant feature branch.
-3. Start the stack:
+## Installation
 
-   ```bash
-   docker compose up -d
+1. Put `envia_com_quote_and_shipping/` on the Odoo `addons_path`:
+
+   ```
+   envia_com_quote_and_shipping/
+   ├── envia/
+   └── envia_http/
    ```
 
-4. Open Odoo at [http://localhost:8069](http://localhost:8069).
+2. In `odoo.conf`, add the HTTP bridge to `server_wide_modules` and restart Odoo:
 
-## Production (Envia OAuth callback)
+   ```ini
+   server_wide_modules = web,base,envia_http
+   ```
 
-The Envia integration callback must work without a logged-in session and without `X-Odoo-Database`. Configure this **the same way locally and in production**:
+3. In Apps, install **Envia.com** (`envia`) only.
 
-1. Keep `server_wide_modules = web,base,envia_http` in `config/odoo.conf` (see the file).
-2. Restart Odoo after any config change.
-3. Set **web.base.url** to your public HTTPS domain.
-4. Verify: `curl -X POST https://your-domain/envia/integration/callback` must return **401**, not **404**.
+## Configuration
 
-The `envia` module stays uninstallable from Apps; only the tiny `envia_http` bridge is server-wide.
+1. Open **Envia.com → Settings** (or the welcome / connect wizard).
+2. Generate the Odoo API key and complete the Envia.com OAuth connection.
+3. Set the default ship-from (origin) address and preferred carriers.
+4. On products, set **weight** (Inventory tab) before quoting; missing values
+   fall back to 1 kg.
 
-## Branching
+This package uses Envia.com **production** API hosts by default. Developers may
+override with `ENVIA_ENVIRONMENT=sandbox` and related `ENVIA_*` environment
+variables (see `docker-compose.yml`).
 
-| Branch   | Purpose                                      |
-| -------- | -------------------------------------------- |
-| `main`   | Stable baseline                              |
-| Feature  | Active development (e.g. `PROJ-5144`)        |
+## Usage
 
-Changes are integrated into `main` via pull request after review.
+1. Open a confirmed quotation / sales order.
+2. Use **Add shipping** and select the Envia.com carrier.
+3. Compare returned rates and apply the chosen service to the order.
+
+## Compatibility
+
+| Platform | Supported |
+| --- | --- |
+| Odoo 19 on-premise (Community / Enterprise) | Yes |
+| Odoo.sh | Yes |
+| Odoo Online (odoo.com SaaS) | No — requires `server_wide_modules` / custom addons |
+
+## Authors
+
+Envia.com
 
 ## License
 
-[LGPL-3.0](https://www.gnu.org/licenses/lgpl-3.0.html)
-
-## Author
-
-Alejandro Prado
+Proprietary — © 2026 Envia.com. All rights reserved.
