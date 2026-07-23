@@ -2699,13 +2699,8 @@ msgstr "Odoo está listo"
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"In your Envia store settings, enable Automatic Quoting at checkout "
-"to control the shipping price customers see when they place an order."
-msgstr ""
-"En la configuración de tu tienda en Envia, activa Cotización automática en el "
-"checkout para controlar el precio de envío que verán tus clientes al finalizar "
-"la orden."
+msgid "In your Envia store settings, enable Automatic Quoting at checkout to control the shipping price customers see when they place an order."
+msgstr "En la configuración de tu tienda en Envia, activa Cotización automática en el checkout para controlar el precio de envío que verán tus clientes al finalizar la orden."
 
 #. module: envia
 #: model:ir.model,name:envia.model_onboarding_onboarding
@@ -3809,12 +3804,8 @@ msgstr "Empezar a cotizar"
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"Set up your warehouse and origin addresses in Odoo so Envia "
-"can quote from the right locations."
-msgstr ""
-"Configura tu almacén y las direcciones de origen en Odoo para que Envia "
-"pueda cotizar desde las ubicaciones correctas."
+msgid "Set up your warehouse and origin addresses in Odoo so Envia can quote from the right locations."
+msgstr "Configura tu almacén y las direcciones de origen en Odoo para que Envia pueda cotizar desde las ubicaciones correctas."
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
@@ -3828,12 +3819,8 @@ msgstr "Sincronizar orígenes de envío en Odoo"
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"Synchronize your catalog in Envia so quotes use the correct "
-"product weights and dimensions."
-msgstr ""
-"Sincroniza tu catálogo en Envia para que las cotizaciones usen los pesos "
-"y dimensiones correctos de los productos."
+msgid "Synchronize your catalog in Envia so quotes use the correct product weights and dimensions."
+msgstr "Sincroniza tu catálogo en Envia para que las cotizaciones usen los pesos y dimensiones correctos de los productos."
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
@@ -4212,12 +4199,8 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"You are ready to get carrier rates from sale orders "
-"in Odoo."
-msgstr ""
-"Ya puede obtener tarifas de transportistas desde pedidos de venta "
-"en Odoo."
+msgid "You are ready to get carrier rates from sale orders in Odoo."
+msgstr "Ya puedes obtener tarifas de transportistas desde pedidos de venta en Odoo."
 
 #. module: envia
 #. odoo-python

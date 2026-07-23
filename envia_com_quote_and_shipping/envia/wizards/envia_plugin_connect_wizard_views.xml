@@ -132,40 +132,28 @@
                                     <span class="o_envia_welcome_step_number">3</span>
                                     <div>
                                         <div class="fw-bold">Configure automatic quoting in Envia</div>
-                                        <div class="text-muted small">
-                                            In your Envia store settings, enable Automatic Quoting at checkout
-                                            to control the shipping price customers see when they place an order.
-                                        </div>
+                                        <div class="text-muted small">In your Envia store settings, enable Automatic Quoting at checkout to control the shipping price customers see when they place an order.</div>
                                     </div>
                                 </div>
                                 <div class="o_envia_welcome_step">
                                     <span class="o_envia_welcome_step_number">4</span>
                                     <div>
                                         <div class="fw-bold">Sync products in Envia</div>
-                                        <div class="text-muted small">
-                                            Synchronize your catalog in Envia so quotes use the correct
-                                            product weights and dimensions.
-                                        </div>
+                                        <div class="text-muted small">Synchronize your catalog in Envia so quotes use the correct product weights and dimensions.</div>
                                     </div>
                                 </div>
                                 <div class="o_envia_welcome_step">
                                     <span class="o_envia_welcome_step_number">5</span>
                                     <div>
                                         <div class="fw-bold">Sync shipping origins in Odoo</div>
-                                        <div class="text-muted small">
-                                            Set up your warehouse and origin addresses in Odoo so Envia
-                                            can quote from the right locations.
-                                        </div>
+                                        <div class="text-muted small">Set up your warehouse and origin addresses in Odoo so Envia can quote from the right locations.</div>
                                     </div>
                                 </div>
                                 <div class="o_envia_welcome_step">
                                     <span class="o_envia_welcome_step_number">6</span>
                                     <div>
                                         <div class="fw-bold">Start quoting</div>
-                                        <div class="text-muted small">
-                                            You are ready to get carrier rates from sale orders
-                                            in Odoo.
-                                        </div>
+                                        <div class="text-muted small">You are ready to get carrier rates from sale orders in Odoo.</div>
                                     </div>
                                 </div>
                             </div>

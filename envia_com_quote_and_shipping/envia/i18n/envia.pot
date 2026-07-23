@@ -2579,9 +2579,7 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"In your Envia store settings, enable Automatic Quoting at checkout "
-"to control the shipping price customers see when they place an order."
+msgid "In your Envia store settings, enable Automatic Quoting at checkout to control the shipping price customers see when they place an order."
 msgstr ""
 
 #. module: envia
@@ -3645,9 +3643,7 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"Set up your warehouse and origin addresses in Odoo so Envia "
-"can quote from the right locations."
+msgid "Set up your warehouse and origin addresses in Odoo so Envia can quote from the right locations."
 msgstr ""
 
 #. module: envia
@@ -3662,9 +3658,7 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"Synchronize your catalog in Envia so quotes use the correct "
-"product weights and dimensions."
+msgid "Synchronize your catalog in Envia so quotes use the correct product weights and dimensions."
 msgstr ""
 
 #. module: envia
@@ -4009,9 +4003,7 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_plugin_connect_wizard_form
-msgid ""
-"You are ready to get carrier rates from sale orders "
-"in Odoo."
+msgid "You are ready to get carrier rates from sale orders in Odoo."
 msgstr ""
 
 #. module: envia
