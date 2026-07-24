@@ -22,5 +22,5 @@ DOCUMENTATION.txt
 .graphifyignore
 
 # Dev-only Envia OAuth defaults (not loaded by the module)
-envia_com_quote_and_shipping/envia/data/envia_oauth_config_data_dev.xml
-envia_com_quote_and_shipping/envia/data/envia_oauth_config_data copy.xml
+envia/data/envia_oauth_config_data_dev.xml
+envia/data/envia_oauth_config_data copy.xml
