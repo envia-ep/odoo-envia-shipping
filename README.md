@@ -47,14 +47,14 @@ Label creation and tracking are **not** included in this version.
 Exposes Envia integration endpoints before a database is selected. Routes
 delegate to `envia` when that module is installed; otherwise they return HTTP
 503. Full route list and verification steps:
-[`envia_com_quote_and_shipping/envia_http/README.md`](envia_com_quote_and_shipping/envia_http/README.md).
+[`envia_http/README.md`](envia_http/README.md).
 
 ## Installation
 
-1. Put `envia_com_quote_and_shipping/` on the Odoo `addons_path`:
+1. Put this repository root on the Odoo `addons_path`:
 
    ```
-   envia_com_quote_and_shipping/
+   <repository root>/
    ├── envia/
    └── envia_http/
    ```
