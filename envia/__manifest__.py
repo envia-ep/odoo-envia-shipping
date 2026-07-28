@@ -1,6 +1,6 @@
 {
     "name": "Envia.com Quote and Shipping",
-    "version": "19.0.1.0.0",
+    "version": "19.0.1.0.1",
     "category": "Inventory/Delivery",
     "summary": "The best shipping solution for your business. Connect to 150+ couriers worldwide for domestic and international shipments.",
     "description": """
@@ -91,7 +91,7 @@ credentials from Envia.com before release.
         ],
     },
     "images": [
-        "static/description/icon.png",
+        "static/description/banner.png",
         "static/description/screenshot_connect_wizard.png",
         "static/description/screenshot_envia_portal.png",
         "static/description/screenshot_settings.png",
