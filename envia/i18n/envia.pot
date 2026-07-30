@@ -4443,6 +4443,260 @@ msgstr ""
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Backend only: sales orders and Add shipping. Does not change the ecommerce "
+"website checkout."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Enable branch pickup and delivery (backend)"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Allow origin/destination branch routes when quoting from sales orders and "
+"the Envia quote wizard. Independent from ecommerce checkout Pickup."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ecommerce website checkout"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Online store only (website delivery step). Does not change quoting on sales "
+"orders or the Envia quote wizard."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Enable pickup in ecommerce checkout"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Show the Pickup tab on the website delivery step. Requires Website / "
+"ecommerce."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show pickup map in ecommerce"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Display the map of nearby pickup locations on the website."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Show only the Pickup map and hide the branch list on the website. Select a "
+"location from the map pins."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ecommerce checkout labels"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Labels for the Ship and Pickup tabs on the website delivery step."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Max pickup branches per carrier (ecommerce)"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Limit pickup branches on the website per Envia carrier code (e.g. "
+"paquetexpress). Closest first. Use 0 for no limit. Does not affect Ship "
+"rates or backend quoting."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Website checkout"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ship / Pickup labels, map, and rate limits on the ecommerce delivery step."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Enable pickup in checkout"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show the Pickup tab on the website delivery step."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show pickup map"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Display the map of nearby pickup locations."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Pickup map only (hide list)"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show only the Pickup map and hide the branch list. Select a location from the map pins."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_pickup_map_only
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_pickup_map_only
+msgid "Pickup map only (hide list)"
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_pickup_map_only
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_pickup_map_only
+msgid ""
+"When enabled, Pickup shows only the map (no branch list). Customers select a "
+"location from the map pins."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Checkout labels"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Custom labels for the Ship and Pickup tabs."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ship label"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Pickup label"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Max pickup branches per carrier"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Limit pickup branches listed per Envia carrier code (e.g. paquetexpress). "
+"Closest first. Use 0 for no limit. Does not affect Ship rates."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_enable_pickup
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_enable_pickup
+msgid "Enable pickup in website checkout"
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_enable_pickup
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_enable_pickup
+msgid "Show the Pickup option on the ecommerce delivery step."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_show_map
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_show_map
+msgid "Show pickup map in website checkout"
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_show_map
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_show_map
+msgid "Show the map of pickup locations when Pickup is selected."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_ship_label
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_ship_label
+msgid "Checkout Ship label"
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_ship_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_ship_label
+msgid "Label for the Ship tab on the ecommerce delivery step."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_ship_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_ship_label
+msgid ""
+"Leave empty to use the translated default. Label for the Ship tab on the "
+"ecommerce delivery step."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_pickup_label
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_pickup_label
+msgid "Checkout Pickup label"
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_pickup_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_pickup_label
+msgid "Label for the Pickup tab on the ecommerce delivery step."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_pickup_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_pickup_label
+msgid ""
+"Leave empty to use the translated default. Label for the Pickup tab on the "
+"ecommerce delivery step."
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_rates_per_carrier
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_rates_per_carrier
+msgid "Max pickup branches per carrier"
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_rates_per_carrier
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_rates_per_carrier
+msgid ""
+"Maximum pickup branches shown per Envia carrier code in website checkout "
+"(e.g. paquetexpress, dhl; closest first). Use 0 for no limit. Does not "
+"affect Ship (home delivery) rates."
+msgstr ""
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/website_pickup.py:0
+msgid "Pickup is disabled for website checkout."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
 msgid "Use Envia as default shipping method"
 msgstr ""
 
@@ -4532,4 +4786,33 @@ msgstr ""
 #. odoo-python
 #: code:addons/envia/models/envia_warehouse_origin.py:0
 msgid "Select a warehouse and an Envia origin address."
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "Could not apply rate."
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "Loading rates…"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "No pickup locations near this address."
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "No rates available for this address."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.envia_delivery_method
+msgid "Delivery route"
 msgstr ""

@@ -75,6 +75,7 @@ credentials from Envia.com before release.
         "wizards/envia_quote_onboarding_wizard_views.xml",
         "wizards/envia_billing_info_wizard_views.xml",
         "wizards/envia_warehouse_origin_wizard_views.xml",
+        "views/website_sale_delivery_templates.xml",
     ],
     "assets": {
         "web.assets_backend": [
@@ -88,6 +89,10 @@ credentials from Envia.com before release.
             "envia/static/src/components/envia_onboarding/**/*",
             "envia/static/src/components/envia_generic_form/**/*",
             "envia/static/src/views/envia_quote_list/**/*",
+        ],
+        "web.assets_frontend": [
+            "envia/static/src/website_sale_delivery/envia_checkout.scss",
+            "envia/static/src/website_sale_delivery/envia_checkout.js",
         ],
     },
     "images": [

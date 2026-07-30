@@ -1081,7 +1081,7 @@ class EnviaQuoteWizard(models.TransientModel):
             ),
             postal_code=postal,
             country=country.code if country else "",
-            phone=company_partner.phone or company_partner.mobile or "5555555555",
+            phone=company_partner.phone or "5555555555",
             email=company_partner.email or "shipping@company.com",
             branch_code="PROBE" if is_branch else None,
         )
@@ -2429,7 +2429,7 @@ class EnviaQuoteWizard(models.TransientModel):
 
     def _build_branch_contact(self, branch, country, state):
         company_partner = self.env.company.partner_id
-        phone = branch.phone or company_partner.phone or company_partner.mobile or "5555555555"
+        phone = branch.phone or company_partner.phone or "5555555555"
         email = branch.email or company_partner.email or "shipping@company.com"
         country_code = branch.country_code or (country.code if country else "")
         state_code = branch.state_code or (state.code if state else "")
@@ -2491,7 +2491,7 @@ class EnviaQuoteWizard(models.TransientModel):
             ),
             postal_code=getattr(self, f"{side}_postal_code") or "",
             country=country.code if country else "",
-            phone=company_partner.phone or company_partner.mobile or "5555555555",
+            phone=company_partner.phone or "5555555555",
             email=company_partner.email or "shipping@company.com",
         )
 
@@ -2530,7 +2530,7 @@ class EnviaQuoteWizard(models.TransientModel):
             contact.district = resolved_district
         company_partner = self.env.company.partner_id
         if not contact.phone:
-            contact.phone = company_partner.phone or company_partner.mobile or "5555555555"
+            contact.phone = company_partner.phone or "5555555555"
         if not contact.email:
             contact.email = company_partner.email or "shipping@company.com"
         missing = []

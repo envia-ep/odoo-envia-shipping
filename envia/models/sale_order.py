@@ -1,5 +1,7 @@
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
+
+from ..services.website_pickup import WebsitePickupService
 
 
 class SaleOrder(models.Model):
@@ -93,7 +95,9 @@ class SaleOrder(models.Model):
 
     def _get_active_envia_quote(self):
         self.ensure_one()
-        return self.envia_quote_ids.filtered(lambda quote: quote._is_label_ready())[:1]
+        return self.envia_quote_ids.filtered(
+            lambda quote: quote._is_label_ready()
+        ).sorted("id", reverse=True)[:1]
 
     def _get_envia_quote_for_delivery_line(self):
         """Label-ready quote, or latest selection still validating branch route."""
@@ -213,15 +217,21 @@ class SaleOrder(models.Model):
         if pickings:
             pickings.write({"envia_service_id": envia_service_id})
 
-    def _sync_envia_shipping_line(self):
+    def _sync_envia_shipping_line(self, quote=None):
         self.ensure_one()
-        quote = self._get_active_envia_quote()
+        quote = quote or self._get_active_envia_quote()
         if not quote:
             raise UserError(_("Get Envia rates and select a carrier first."))
         self._envia_sync_service_id_from_quote(quote)
         price = self._envia_shipping_unit_price(quote)
-        carrier = self.env.ref("envia.delivery_carrier_envia", raise_if_not_found=False)
+        carrier = self._get_envia_delivery_carrier()
         if carrier:
+            # rate_shipment applies fiscal position + margin/% + fixed_margin + free_over.
+            rate = carrier.rate_shipment(self)
+            if rate.get("success"):
+                price = rate["price"]
+            else:
+                price = carrier._apply_margins(price, self)
             self.set_delivery_line(carrier, price)
             return self.order_line.filtered("is_delivery")[:1]
         product = self._get_envia_shipping_product()
@@ -311,3 +321,58 @@ class SaleOrder(models.Model):
                 lambda picking: picking.state not in ("done", "cancel")
             ).write({"envia_service_id": order.envia_service_id})
         return result
+
+    def _set_pickup_location(self, pickup_location_data):
+        super()._set_pickup_location(pickup_location_data)
+        self.ensure_one()
+        if self.carrier_id.delivery_type != "envia":
+            return
+        location = self.pickup_location_data or {}
+        option = (location.get("additional_data") or {}).get("envia_option") or {}
+        if not option and location.get("id"):
+            # Location id is our option id: pickup:carrier:branch:service
+            option = {
+                "id": location.get("id"),
+                "route_type": "pickup",
+                "name": location.get("name"),
+                "street": location.get("street"),
+                "city": location.get("city"),
+                "zip": location.get("zip_code"),
+                "state_code": location.get("state"),
+                "country_code": location.get("country_code"),
+                "lat": location.get("latitude"),
+                "lng": location.get("longitude"),
+            }
+            parts = str(location.get("id") or "").split(":")
+            if len(parts) >= 4 and parts[0] == "pickup":
+                option.update(
+                    {
+                        "carrier": parts[1],
+                        "branch_code": parts[2],
+                        "service_id": ":".join(parts[3:]),
+                    }
+                )
+        if not option.get("branch_code"):
+            return
+        option.setdefault("route_type", "pickup")
+        WebsitePickupService(self.env).apply_selection(self, option)
+
+    def _check_cart_is_ready_to_be_paid(self):
+        super()._check_cart_is_ready_to_be_paid()
+        self.ensure_one()
+        if self.only_services or self.carrier_id.delivery_type != "envia":
+            return
+        quote = self._get_active_envia_quote()
+        if not quote:
+            raise ValidationError(
+                _(
+                    "Select an Envia shipping rate or pickup location before paying."
+                )
+            )
+        if (
+            quote.destination_location_type == "branch"
+            and not quote.destination_branch_code
+        ):
+            raise ValidationError(
+                _("Select an Envia pickup location before paying.")
+            )

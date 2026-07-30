@@ -43,6 +43,30 @@ class ResConfigSettings(models.TransientModel):
         related="company_id.envia_enable_branches",
         readonly=False,
     )
+    envia_checkout_enable_pickup = fields.Boolean(
+        related="company_id.envia_checkout_enable_pickup",
+        readonly=False,
+    )
+    envia_checkout_show_map = fields.Boolean(
+        related="company_id.envia_checkout_show_map",
+        readonly=False,
+    )
+    envia_checkout_pickup_map_only = fields.Boolean(
+        related="company_id.envia_checkout_pickup_map_only",
+        readonly=False,
+    )
+    envia_checkout_ship_label = fields.Char(
+        related="company_id.envia_checkout_ship_label",
+        readonly=False,
+    )
+    envia_checkout_pickup_label = fields.Char(
+        related="company_id.envia_checkout_pickup_label",
+        readonly=False,
+    )
+    envia_checkout_rates_per_carrier = fields.Integer(
+        related="company_id.envia_checkout_rates_per_carrier",
+        readonly=False,
+    )
     envia_default_carrier = fields.Boolean(
         related="company_id.envia_default_carrier",
         readonly=False,
