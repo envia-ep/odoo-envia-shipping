@@ -1,6 +1,6 @@
 {
     "name": "Envia.com Quote and Shipping",
-    "version": "19.0.1.0.1",
+    "version": "19.0.1.0.0",
     "category": "Inventory/Delivery",
     "summary": "The best shipping solution for your business. Connect to 150+ couriers worldwide for domestic and international shipments.",
     "description": """
@@ -8,8 +8,9 @@ Envia.com integration for Odoo 19
 =================================
 
 Connect your Odoo store with Envia.com and quote live carrier rates on sale
-orders through the native Add shipping flow. Label creation and tracking are
-not included in this version.
+orders through the native Add shipping flow. The Envia.com Dashboard embeds
+Ecommerce Pro after OAuth. Label creation and cancel on Validate are not
+included in this version.
 
 Installation
 ------------
@@ -82,6 +83,8 @@ credentials from Envia.com before release.
             "envia/static/src/scss/envia_wizards.scss",
             "envia/static/src/js/envia_api_key_field.js",
             "envia/static/src/xml/envia_api_key_field.xml",
+            "envia/static/src/js/envia_dashboard_action.js",
+            "envia/static/src/xml/envia_dashboard_action.xml",
             "envia/static/src/js/envia_plugin_connect_wizard_form.js",
             "envia/static/src/js/envia_wizard_noop_action.js",
             "envia/static/src/js/envia_quote_wizard_form.js",
