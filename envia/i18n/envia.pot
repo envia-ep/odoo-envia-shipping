@@ -4816,3 +4816,20 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:envia.envia_delivery_method
 msgid "Delivery route"
 msgstr ""
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/models/stock_picking.py:0
+msgid ""
+"Shipment created into Envia<br/>"
+"Tracking Number: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a><br/>"
+"<a href=\"%(url)s\" target=\"_blank\">Open shipping label (PDF)</a>"
+msgstr ""
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_shop_id_display
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Shop ID"
+msgstr ""
+
