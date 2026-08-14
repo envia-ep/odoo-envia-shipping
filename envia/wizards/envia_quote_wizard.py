@@ -3120,6 +3120,27 @@ class EnviaQuoteWizard(models.TransientModel):
         return {"type": "ir.actions.act_window_close"}
 
     def action_confirm_selection(self):
+        """Persist selected rate, then create label via delivery label/create.
+
+        Do not open the legacy ship/generate wizard unless Settings enables it
+        and there is no Envia delivery to use.
+        """
         self.ensure_one()
         self._finalize_quote_selection()
-        return self.quote_id.action_open_create_shipment_wizard()
+        picking = self.picking_id
+        if not picking and self.sale_order_id:
+            picking = self.sale_order_id.picking_ids.filtered(
+                lambda item: item.picking_type_code == "outgoing"
+                and item.state != "cancel"
+            ).sorted("id", reverse=True)[:1]
+        if picking and picking.carrier_id.delivery_type == "envia":
+            return picking.action_envia_generate_label()
+        company = self.company_id or self.env.company
+        if company.envia_use_legacy_create:
+            return self.quote_id.action_open_create_shipment_wizard()
+        raise UserError(
+            _(
+                "Open the delivery and click Generate Envia Label, "
+                "or enable Legacy Create Label (ship/generate) in Settings."
+            )
+        )

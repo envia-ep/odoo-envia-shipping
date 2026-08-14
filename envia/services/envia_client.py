@@ -180,6 +180,86 @@ class EnviaClient:
 
         return body
 
+    def _delete(
+        self,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, Any] | list[Any]:
+        """Private HTTP DELETE to Envia (do not call from models/wizards)."""
+        url_base = (base_url or self.base_url).rstrip("/") + "/"
+        url = f"{url_base}{path.lstrip('/')}"
+        _logger.info("Envia API DELETE %s", url)
+        _logger.debug("Envia API DELETE %s payload=%s", url, payload)
+        try:
+            response = requests.delete(
+                url,
+                headers=self._headers(),
+                json=payload if payload is not None else None,
+                timeout=self.timeout,
+            )
+        except requests.RequestException as error:
+            raise UserError(_("Envia API connection error: %s") % error) from error
+
+        self._log_response("DELETE", url, response)
+
+        body: dict[str, Any] | list[Any] | None = None
+        if response.content:
+            try:
+                body = response.json()
+            except json.JSONDecodeError:
+                body = None
+
+        if response.status_code in (401, 403):
+            api_message = ""
+            if isinstance(body, dict):
+                api_message = (
+                    body.get("message") or body.get("error") or body.get("description") or ""
+                )
+            # Business 403 (e.g. order not found) is not an invalid token.
+            if api_message and str(api_message).lower() not in (
+                "unauthorized",
+                "forbidden",
+            ):
+                raise EnviaApiError(
+                    _("Envia API error (%(status)s): %(message)s")
+                    % {"status": response.status_code, "message": api_message}
+                )
+            if not self.use_bearer_auth:
+                raise UserError(
+                    _(
+                        "Envia OAuth session is invalid or expired. "
+                        "Open Settings > Envia Shipping and click Refresh token."
+                    )
+                )
+            raise UserError(_("Invalid Envia API token. Check Settings > Envia Shipping."))
+
+        if not response.content:
+            if response.status_code >= 400:
+                raise EnviaApiError(
+                    _("Envia API error (%(status)s): %(message)s")
+                    % {
+                        "status": response.status_code,
+                        "message": response.reason or response.text,
+                    }
+                )
+            return {}
+
+        if body is None:
+            raise UserError(
+                _("Envia API returned invalid JSON (HTTP %s).") % response.status_code
+            )
+
+        if response.status_code >= 400:
+            message = self._response_error_message(body, response)
+            raise EnviaApiError(_("Envia API error (%(status)s): %(message)s") % {
+                "status": response.status_code,
+                "message": message,
+            })
+
+        return body
+
     def get_branches(
         self,
         *,

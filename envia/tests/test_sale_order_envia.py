@@ -5,7 +5,7 @@ from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapt
 from odoo.addons.envia.services.payload_mapper import PayloadMapper
 from odoo.addons.envia.wizards.envia_quote_wizard import EnviaQuoteWizard
 from odoo.exceptions import UserError
-from odoo.tests import tagged
+from odoo.tests import Form, tagged
 from odoo.tests.common import TransactionCase
 
 
@@ -14,6 +14,119 @@ class TestSaleOrderEnvia(TransactionCase):
     def setUp(self):
         super().setUp()
         self.env.company.envia_enable_branches = True
+
+    def test_action_envia_reship_creates_linked_outgoing_after_return(self):
+        """After OUT done + return with to_refund, Reship creates a new linked OUT."""
+        warehouse = self.env["stock.warehouse"].search(
+            [("company_id", "=", self.env.company.id)], limit=1
+        )
+        product = self.env["product.product"].create(
+            {
+                "name": "Reship QA Product",
+                "is_storable": True,
+                "sale_ok": True,
+                "list_price": 10.0,
+            }
+        )
+        self.env["stock.quant"]._update_available_quantity(
+            product, warehouse.lot_stock_id, 5
+        )
+        partner = self.env["res.partner"].create(
+            {
+                "name": "Reship Customer",
+                "street": "Calle 1",
+                "city": "CDMX",
+                "zip": "06600",
+                "country_id": self.env.ref("base.mx").id,
+            }
+        )
+        carrier = self.env.ref("envia.delivery_carrier_envia")
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": partner.id,
+                "partner_invoice_id": partner.id,
+                "partner_shipping_id": partner.id,
+                "warehouse_id": warehouse.id,
+                "order_line": [
+                    (0, 0, {"product_id": product.id, "product_uom_qty": 1.0})
+                ],
+            }
+        )
+        order.action_confirm()
+        out_picking = order.picking_ids.filtered(
+            lambda picking: picking.picking_type_code == "outgoing"
+        )
+        self.assertEqual(len(out_picking), 1)
+        out_picking.move_ids.write({"quantity": 1, "picked": True})
+        out_picking.button_validate()
+        self.assertEqual(order.order_line.filtered("product_id").qty_delivered, 1.0)
+        self.assertFalse(order.envia_can_reship)
+
+        return_form = Form(
+            self.env["stock.return.picking"].with_context(
+                active_ids=out_picking.ids,
+                active_id=out_picking.id,
+                active_model="stock.picking",
+            )
+        )
+        return_wiz = return_form.save()
+        return_wiz.product_return_moves.quantity = 1.0
+        return_wiz.product_return_moves.to_refund = True
+        return_action = return_wiz.action_create_returns()
+        return_picking = self.env["stock.picking"].browse(return_action["res_id"])
+        return_picking.move_ids.write({"quantity": 1, "picked": True})
+        return_picking.button_validate()
+        self.assertEqual(order.order_line.filtered("product_id").qty_delivered, 0.0)
+        self.assertTrue(order.envia_can_reship)
+
+        order.write({"carrier_id": carrier.id, "envia_service_id": 442})
+        action = order.action_envia_reship()
+        new_outs = order.picking_ids.filtered(
+            lambda picking: picking.picking_type_code == "outgoing"
+            and picking.state not in ("done", "cancel")
+        )
+        self.assertEqual(len(new_outs), 1)
+        self.assertEqual(new_outs.sale_id, order)
+        self.assertEqual(new_outs.carrier_id, carrier)
+        self.assertEqual(new_outs.envia_service_id, 442)
+        self.assertTrue(
+            new_outs.move_ids.filtered(lambda move: move.sale_line_id in order.order_line)
+        )
+        self.assertEqual(action["res_id"], new_outs.id)
+        self.assertFalse(order.envia_can_reship)
+
+    def test_action_envia_reship_without_return_raises(self):
+        warehouse = self.env["stock.warehouse"].search(
+            [("company_id", "=", self.env.company.id)], limit=1
+        )
+        product = self.env["product.product"].create(
+            {
+                "name": "No Return Reship",
+                "is_storable": True,
+                "sale_ok": True,
+                "list_price": 10.0,
+            }
+        )
+        self.env["stock.quant"]._update_available_quantity(
+            product, warehouse.lot_stock_id, 2
+        )
+        partner = self.env["res.partner"].create({"name": "No Return Customer"})
+        order = self.env["sale.order"].create(
+            {
+                "partner_id": partner.id,
+                "partner_shipping_id": partner.id,
+                "warehouse_id": warehouse.id,
+                "order_line": [
+                    (0, 0, {"product_id": product.id, "product_uom_qty": 1.0})
+                ],
+            }
+        )
+        order.action_confirm()
+        picking = order.picking_ids
+        picking.move_ids.write({"quantity": 1, "picked": True})
+        picking.button_validate()
+        with self.assertRaises(UserError):
+            order.action_envia_reship()
 
     def test_envia_state_code_maps_mexico_city(self):
         self.assertEqual(EnviaOfficialAdapter.envia_state_code("MX", "CMX"), "CX")

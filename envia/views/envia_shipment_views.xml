@@ -4,16 +4,17 @@
         <field name="name">envia.shipment.list</field>
         <field name="model">envia.shipment</field>
         <field name="arch" type="xml">
-            <list decoration-success="state == 'delivered'"
-                  decoration-muted="state == 'cancelled'">
+            <list create="false"
+                  decoration-success="state == 'delivered'"
+                  decoration-muted="state in ('cancelled', 'replaced')">
                 <field name="name"/>
                 <field name="tracking_number"/>
                 <field name="carrier_name"/>
                 <field name="service_name"/>
-                <field name="status"/>
                 <field name="state" widget="badge"
                        decoration-success="state == 'delivered'"
                        decoration-info="state == 'in_transit'"
+                       decoration-muted="state == 'replaced'"
                        decoration-danger="state == 'cancelled'"/>
                 <field name="sale_order_id"/>
                 <field name="picking_id"/>
@@ -25,25 +26,20 @@
         <field name="name">envia.shipment.form</field>
         <field name="model">envia.shipment</field>
         <field name="arch" type="xml">
-            <form>
+            <!-- Label payload is system-owned once created; Open Label stays available. -->
+            <form create="false" edit="false">
                 <header>
-                    <button name="action_open_label" type="object" string="Download Label"
+                    <button name="action_open_label" type="object" string="Open Label"
                             class="btn-primary"
-                            invisible="not label_attachment_id and not label_url"/>
-                    <button name="action_track_shipment" type="object" string="Refresh Tracking"
-                            invisible="not tracking_number"/>
-                    <field name="state" widget="statusbar"
-                           statusbar_visible="draft,created,in_transit,delivered"/>
+                            invisible="not label_url"/>
+                    <field name="state" widget="statusbar" readonly="1"
+                           statusbar_visible="draft,created,replaced"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
-                        <button type="object" name="action_track_shipment" class="oe_stat_button"
-                                icon="fa-truck" invisible="not tracking_number">
-                            <field name="tracking_number" widget="statinfo" string="Tracking"/>
-                        </button>
                         <button type="object" name="action_open_label" class="oe_stat_button"
-                                icon="fa-file-pdf-o"
-                                invisible="not label_attachment_id and not label_url">
+                                icon="fa-external-link"
+                                invisible="not label_url">
                             <div class="o_stat_info">
                                 <span class="o_stat_text">Label</span>
                             </div>
@@ -63,37 +59,24 @@
 
                     <group>
                         <group string="Documents">
-                            <field name="quote_id"/>
-                            <field name="sale_order_id"/>
-                            <field name="picking_id"/>
-                            <field name="external_shipment_id"/>
+                            <field name="quote_id" readonly="1"/>
+                            <field name="sale_order_id" readonly="1"/>
+                            <field name="picking_id" readonly="1"/>
+                            <field name="external_shipment_id" readonly="1"/>
+                            <field name="external_order_id" readonly="1"/>
+                            <field name="tracking_number" readonly="1"/>
                         </group>
                         <group string="Status">
-                            <field name="carrier"/>
-                            <field name="status"/>
-                            <field name="status_description"/>
-                            <field name="pricing_total"/>
-                            <field name="pricing_currency_id"/>
+                            <field name="carrier" readonly="1"/>
+                            <field name="status_description" readonly="1"/>
+                            <field name="pricing_total" readonly="1"/>
+                            <field name="pricing_currency_id" readonly="1"/>
                         </group>
                     </group>
 
                     <group string="Label">
-                        <field name="label_url" widget="url"/>
-                        <field name="label_attachment_id"/>
+                        <field name="label_url" widget="url" readonly="1"/>
                     </group>
-
-                    <notebook>
-                        <page string="Tracking timeline">
-                            <field name="tracking_event_ids">
-                                <list default_order="event_timestamp desc">
-                                    <field name="event_timestamp"/>
-                                    <field name="location"/>
-                                    <field name="status"/>
-                                    <field name="description"/>
-                                </list>
-                            </field>
-                        </page>
-                    </notebook>
                 </sheet>
                 <chatter/>
             </form>

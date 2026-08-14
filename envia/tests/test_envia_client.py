@@ -220,3 +220,50 @@ class TestEnviaClient(TransactionCase):
         ]
         refined = EnviaClient.refine_branches_near_zip(branches, "67192")
         self.assertEqual([entry["branch_id"] for entry in refined], ["A"])
+
+    @patch("odoo.addons.envia.services.envia_client.requests.post")
+    def test_cancel_shipments_posts_to_queries_base(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"success": True},
+            text='{"success": true}',
+        )
+        client = EnviaClient("https://api-test.envia.com/", "shipping-token")
+        body = client._post(
+            "shipments/bulk/cancel",
+            {"shipments": [40772217]},
+            base_url="https://queries-test.envia.com/",
+        )
+        self.assertEqual(body, {"success": True})
+        self.assertEqual(
+            mock_post.call_args.args[0],
+            "https://queries-test.envia.com/shipments/bulk/cancel",
+        )
+        self.assertEqual(
+            mock_post.call_args.kwargs["json"],
+            {"shipments": [40772217]},
+        )
+
+    @patch("odoo.addons.envia.services.envia_client.requests.delete")
+    def test_unlink_order_shipment_deletes_on_queries_base(self, mock_delete):
+        mock_delete.return_value = MagicMock(
+            status_code=200,
+            content=b'{"success": true}',
+            json=lambda: {"success": True},
+            text='{"success": true}',
+        )
+        client = EnviaClient("https://api-test.envia.com/", "shipping-token")
+        body = client._delete(
+            "orders/34165/110331/fulfillment/order-shipments",
+            {"shipment_id": 179909},
+            base_url="https://queries-test.envia.com/",
+        )
+        self.assertEqual(body, {"success": True})
+        self.assertEqual(
+            mock_delete.call_args.args[0],
+            "https://queries-test.envia.com/orders/34165/110331/fulfillment/order-shipments",
+        )
+        self.assertEqual(
+            mock_delete.call_args.kwargs["json"],
+            {"shipment_id": 179909},
+        )

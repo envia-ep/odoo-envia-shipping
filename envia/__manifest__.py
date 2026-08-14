@@ -8,9 +8,9 @@ Envia.com integration for Odoo 19
 =================================
 
 Connect your Odoo store with Envia.com and quote live carrier rates on sale
-orders through the native Add shipping flow. The Envia.com Dashboard embeds
-Ecommerce Pro after OAuth. Label creation and cancel on Validate are not
-included in this version.
+orders through the native Add shipping flow. Labels are generated manually on
+the delivery order (Generate / Replace Envia Label); Validate does not create
+labels. Tracking uses the Core carrier contract.
 
 Installation
 ------------
@@ -46,6 +46,7 @@ credentials from Envia.com before release.
         "sale",
         "stock",
         "sale_stock",
+        "stock_delivery",
         "delivery",
         "website_sale",
         "envia_http",

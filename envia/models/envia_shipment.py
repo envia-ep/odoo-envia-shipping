@@ -1,11 +1,10 @@
-import base64
 import logging
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
-from ..services.dto import CreateShipmentRequest, TrackRequest
-from ..services.envia_client import EnviaClient
+from ..services.dto import CreateShipmentRequest
+from ..services.envia_client import EnviaApiError
 from ..services.envia_official_adapter import EnviaOfficialAdapter
 from ..services.payload_mapper import PayloadMapper, get_envia_adapter
 
@@ -25,6 +24,10 @@ class EnviaShipment(models.Model):
     picking_id = fields.Many2one("stock.picking", ondelete="set null")
     company_id = fields.Many2one("res.company", default=lambda self: self.env.company, required=True)
     external_shipment_id = fields.Char(string="External Shipment ID")
+    external_order_id = fields.Char(
+        string="Envia Order ID",
+        help="Envia ecommerce orderId from label/create; used to unlink fulfillment.",
+    )
     tracking_number = fields.Char(tracking=True)
     carrier = fields.Char()
     carrier_name = fields.Char()
@@ -41,12 +44,14 @@ class EnviaShipment(models.Model):
             ("created", "Created"),
             ("in_transit", "In Transit"),
             ("delivered", "Delivered"),
+            ("replaced", "Replaced"),
             ("cancelled", "Cancelled"),
         ],
         default="draft",
         tracking=True,
     )
-    tracking_event_ids = fields.One2many("envia.tracking.event", "shipment_id")
+
+    _INACTIVE_STATES = frozenset({"cancelled", "replaced"})
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -55,117 +60,140 @@ class EnviaShipment(models.Model):
                 vals["name"] = self.env["ir.sequence"].next_by_code("envia.shipment") or "New"
         return super().create(vals_list)
 
+    def _is_active(self):
+        self.ensure_one()
+        return self.state not in self._INACTIVE_STATES
+
     @api.model
     def _get_envia_adapter(self, company):
         return get_envia_adapter(company)
 
-    def action_track_shipment(self):
-        for shipment in self:
-            shipment._sync_tracking()
+    def _mark_replaced(self):
+        """Mark shipments inactive after Envia unlink (or local-only fallback)."""
+        self.filtered(lambda item: item.state not in self._INACTIVE_STATES).write(
+            {"state": "replaced", "status": "replaced"}
+        )
+
+    def _envia_resolved_order_id(self):
+        """Envia orderId on the shipment, or fallback from the sale order."""
+        self.ensure_one()
+        order_id = (self.external_order_id or "").strip()
+        if order_id:
+            return order_id
+        sale = self.sale_order_id
+        if sale:
+            return (sale.envia_external_order_id or "").strip()
+        return ""
+
+    def _envia_delete_order_shipment(self):
+        """DELETE fulfillment link on Envia queries API for this shipment."""
+        self.ensure_one()
+        external_id = (self.external_shipment_id or "").strip()
+        if not external_id:
+            _logger.info(
+                "Skip Envia order-shipments unlink for %s: no external_shipment_id",
+                self.name,
+            )
+            return False
+        envia_order_id = self._envia_resolved_order_id()
+        if not envia_order_id:
+            _logger.warning(
+                "Skip Envia order-shipments unlink for %s: no external_order_id "
+                "(label/create orderId). Continuing with local unlink only.",
+                self.name,
+            )
+            return False
+        try:
+            shipment_id = int(external_id)
+            order_id = int(envia_order_id)
+        except ValueError as error:
+            raise UserError(
+                _(
+                    "Invalid Envia order/shipment id on %(name)s "
+                    "(order=%(order)s, shipment=%(shipment)s).",
+                    name=self.name,
+                    order=envia_order_id,
+                    shipment=external_id,
+                )
+            ) from error
+        adapter = get_envia_adapter(self.company_id)
+        queries_base_url = self.company_id._envia_get_queries_base_url()
+        try:
+            adapter.unlink_order_shipment(
+                order_id,
+                shipment_id,
+                queries_base_url=queries_base_url,
+            )
+        except EnviaApiError as error:
+            message = str(error.args[0] if error.args else error).lower()
+            # Already detached / unknown order on Envia — continue local unlink.
+            if "404" in message or "cannot be found" in message or "not found" in message:
+                _logger.warning(
+                    "Envia order-shipments unlink skipped for shipment %s "
+                    "(envia order %s): %s",
+                    shipment_id,
+                    order_id,
+                    error,
+                )
+                return False
+            raise
+        if not (self.external_order_id or "").strip():
+            self.external_order_id = str(order_id)
         return True
+
+    def _unlink_on_envia(self):
+        """Unlink each active shipment on Envia, then mark replaced locally."""
+        active = self.filtered(lambda item: item._is_active())
+        for shipment in active:
+            shipment._envia_delete_order_shipment()
+        active._mark_replaced()
+
+    def _cancel_on_envia(self):
+        """Deprecated: use Replace Envia Label (unlink + re-quote)."""
+        self.ensure_one()
+        raise UserError(
+            _(
+                "Envia labels are not cancelled from Odoo. "
+                "Use Replace Envia Label on the delivery to unlink and create a new one."
+            )
+        )
 
     def action_open_label(self):
         self.ensure_one()
-        if self.label_attachment_id:
-            return {
-                "type": "ir.actions.act_url",
-                "url": f"/web/content/{self.label_attachment_id.id}?download=true",
-                "target": "self",
-            }
         if self.label_url:
             return {
                 "type": "ir.actions.act_url",
                 "url": self.label_url,
                 "target": "new",
             }
+        if self.label_attachment_id:
+            return {
+                "type": "ir.actions.act_url",
+                "url": f"/web/content/{self.label_attachment_id.id}?download=true",
+                "target": "self",
+            }
         raise UserError(_("No label is available for this shipment yet."))
 
-    def _sync_tracking(self):
-        self.ensure_one()
-        if not self.tracking_number:
-            raise UserError(_("This shipment has no tracking number."))
-        adapter = self._get_envia_adapter(self.company_id)
-        response = adapter.track(TrackRequest(tracking_numbers=[self.tracking_number], carrier=self.carrier))
-        if not response.results:
-            return
-        result = response.results[0]
-        self.write(
-            {
-                "status": result.status,
-                "state": self._map_tracking_state(result.status),
-            }
-        )
-        self._replace_tracking_events(result.events)
-
-    def _replace_tracking_events(self, events):
-        self.tracking_event_ids.unlink()
-        event_vals = []
-        for event in events:
-            event_vals.append(
-                {
-                    "shipment_id": self.id,
-                    "event_timestamp": self._parse_event_timestamp(event.timestamp),
-                    "location": event.location,
-                    "description": event.description,
-                    "status": event.status,
-                }
-            )
-        if event_vals:
-            self.env["envia.tracking.event"].create(event_vals)
-
-    @staticmethod
-    def _parse_event_timestamp(value):
-        if not value:
-            return False
-        try:
-            return fields.Datetime.to_datetime(value.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
-            return False
-
-    @staticmethod
-    def _map_tracking_state(status: str) -> str:
-        normalized = (status or "").lower()
-        if "deliver" in normalized:
-            return "delivered"
-        if "transit" in normalized or "picked" in normalized or "route" in normalized:
-            return "in_transit"
-        if "cancel" in normalized:
-            return "cancelled"
-        return "created"
-
-    def _download_label_attachment(self, label_url: str):
-        self.ensure_one()
-        if not label_url:
-            return
-        token = self.company_id._envia_get_shipping_api_token()
-        client = EnviaClient(self.company_id._envia_get_base_url(), token or "")
-        content = client.get_binary(label_url)
-        attachment = self.env["ir.attachment"].create(
-            {
-                "name": f"{self.tracking_number or self.name}_label.pdf",
-                "type": "binary",
-                "datas": base64.b64encode(content),
-                "res_model": self._name,
-                "res_id": self.id,
-                "mimetype": "application/pdf",
-            }
-        )
-        self.label_attachment_id = attachment.id
-
     @api.model
-    def create_from_api_response(self, response, quote, picking=None):
+    def _create_from_label_response(self, response, picking):
+        """Bookkeep label/create when no quote record is available."""
+        picking.ensure_one()
         currency = False
         if response.pricing_currency:
-            currency = self.env["res.currency"].search(
+            currency = self.env["res.currency"].with_context(active_test=False).search(
                 [("name", "=", response.pricing_currency)], limit=1
             )
-        shipment = self.create(
+        return self.create(
             {
-                "quote_id": quote.id,
-                "selected_service_id": quote.selected_service_id.id,
-                "sale_order_id": quote.sale_order_id.id,
-                "picking_id": picking.id if picking else quote.picking_id.id,
-                "external_shipment_id": str(response.shipment_id) if response.shipment_id else False,
+                "sale_order_id": picking.sale_id.id,
+                "picking_id": picking.id,
+                "company_id": picking.company_id.id,
+                "external_shipment_id": (
+                    str(response.shipment_id) if response.shipment_id else False
+                ),
+                "external_order_id": (
+                    str(response.order_id) if response.order_id else False
+                ),
                 "tracking_number": response.tracking_number,
                 "carrier": response.carrier,
                 "carrier_name": response.carrier_name,
@@ -178,36 +206,114 @@ class EnviaShipment(models.Model):
                 "state": "created",
             }
         )
-        if response.label_url:
-            shipment._download_label_attachment(response.label_url)
+
+    @api.model
+    def create_from_api_response(self, response, quote, picking=None):
+        """Persist bookkeeping; Envia keeps the PDF — we only store the URL."""
+        if not quote:
+            if not picking:
+                raise UserError(_("A delivery is required to register the Envia label."))
+            return self._create_from_label_response(response, picking)
+        currency = False
+        if response.pricing_currency:
+            currency = self.env["res.currency"].with_context(active_test=False).search(
+                [("name", "=", response.pricing_currency)], limit=1
+            )
+        picking = picking or quote.picking_id
+        shipment = self.create(
+            {
+                "quote_id": quote.id,
+                "selected_service_id": quote.selected_service_id.id,
+                "sale_order_id": quote.sale_order_id.id or (picking.sale_id.id if picking else False),
+                "picking_id": picking.id if picking else False,
+                "external_shipment_id": str(response.shipment_id) if response.shipment_id else False,
+                "external_order_id": str(response.order_id) if response.order_id else False,
+                "tracking_number": response.tracking_number,
+                "carrier": response.carrier,
+                "carrier_name": response.carrier_name,
+                "service_name": response.service,
+                "status": response.status,
+                "status_description": response.status_description,
+                "label_url": response.label_url,
+                "pricing_total": response.pricing_total,
+                "pricing_currency_id": currency.id if currency else False,
+                "state": "created",
+            }
+        )
         if shipment.picking_id and response.tracking_number:
-            if hasattr(shipment.picking_id, "carrier_tracking_ref"):
+            if (
+                not self.env.context.get("envia_skip_picking_tracking")
+                and not shipment.picking_id.carrier_tracking_ref
+            ):
                 shipment.picking_id.carrier_tracking_ref = response.tracking_number
         quote.state = "used"
+        if (
+            response.label_url
+            and shipment.picking_id
+            and not self.env.context.get("envia_skip_label_download")
+            and not shipment.picking_id._envia_has_label_url_message()
+        ):
+            try:
+                with self.env.cr.savepoint():
+                    shipment.picking_id._envia_post_label_url(
+                        label_url=response.label_url,
+                        tracking_number=response.tracking_number,
+                    )
+            except Exception as error:  # noqa: BLE001
+                _logger.warning(
+                    "Envia label URL chatter post failed for %s: %s",
+                    shipment.name,
+                    error,
+                )
         return shipment
 
     @api.model
-    def _cron_sync_tracking(self):
-        shipments = self.search(
-            [
-                ("state", "in", ["created", "in_transit"]),
-                ("tracking_number", "!=", False),
-            ]
+    def create_bookkeeping_from_picking(self, picking, quote=None):
+        """Create envia.shipment for a Core picking that already has tracking."""
+        picking.ensure_one()
+        existing = picking.envia_shipment_ids.filtered(
+            lambda item: item._is_active()
+        )[:1]
+        if existing:
+            return existing
+        tracking = (picking.carrier_tracking_ref or "").strip()
+        if not tracking:
+            raise UserError(
+                _("Transfer %(name)s has no tracking to register.", name=picking.name)
+            )
+        quote = quote or picking._get_active_envia_quote()
+        service = quote.selected_service_id if quote else self.env["envia.quote.service"]
+        shipment = self.create(
+            {
+                "quote_id": quote.id if quote else False,
+                "selected_service_id": service.id if service else False,
+                "sale_order_id": picking.sale_id.id,
+                "picking_id": picking.id,
+                "tracking_number": tracking.split(",")[0].strip(),
+                "carrier": service.carrier if service else False,
+                "carrier_name": (service.carrier_name or service.carrier) if service else picking.carrier_id.name,
+                "service_name": service.service_name if service else False,
+                "status": "created",
+                "status_description": _("Recovered from delivery order tracking"),
+                "label_url": picking.envia_label_url or False,
+                "pricing_total": service.price if service else False,
+                "state": "created",
+            }
         )
-        for shipment in shipments:
-            try:
-                shipment._sync_tracking()
-            except UserError as error:
-                _logger.warning("Tracking sync failed for %s: %s", shipment.name, error)
-            except Exception as error:
-                _logger.exception("Unexpected tracking sync failure for %s", shipment.name)
+        if quote and quote.state != "used":
+            quote.state = "used"
+        return shipment
 
     @api.model
-    def action_create_shipment_from_quote(self, quote):
+    def action_create_shipment_from_quote(self, quote, picking=None):
         quote._validate_label_generation()
         selected = quote.selected_service_id
         sale_order = quote.sale_order_id
-        picking = quote.picking_id or (sale_order.picking_ids[:1] if sale_order else False)
+        picking = (
+            picking
+            or quote.picking_id
+            or (sale_order.picking_ids[:1] if sale_order else False)
+        )
         mapper = PayloadMapper()
         request = CreateShipmentRequest(
             quote_id=quote.quote_id,

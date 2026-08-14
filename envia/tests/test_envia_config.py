@@ -5,7 +5,6 @@ from odoo.tests.common import TransactionCase
 
 from odoo.addons.envia.services.envia_config import (
     DEFAULT_CHECKOUT_PATH,
-    DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
     DEFAULT_PACKAGE_DIMENSIONS_PATH,
     ENVIA_ENVIRONMENT_PARAM,
     get_envia_api_base_url,
@@ -113,11 +112,8 @@ class TestEnviaConfig(TransactionCase):
         {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "", "ENVIA_PACKAGE_DIMENSIONS_PATH": ""},
         clear=False,
     )
-    def test_package_dimensions_url_defaults(self):
-        self.assertEqual(
-            get_envia_ecommerce_private_base_url(),
-            DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
-        )
+    def test_ecommerce_private_base_url_requires_env(self):
+        self.assertIsNone(get_envia_ecommerce_private_base_url())
         self.assertEqual(
             get_envia_package_dimensions_path("34084"),
             DEFAULT_PACKAGE_DIMENSIONS_PATH.format(shop_id="34084"),
@@ -139,12 +135,6 @@ class TestEnviaConfig(TransactionCase):
         self.assertEqual(
             get_envia_package_dimensions_path("34084"),
             "package/dimensions/34084",
-        )
-
-    def test_package_dimensions_default_host_is_ecommerce_api_new(self):
-        self.assertEqual(
-            DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
-            "https://ecommerce-api-new.herokuapp.com/",
         )
 
     @patch.dict("os.environ", {"ENVIA_API_BASE_URL": "", "ENVIA_QUERIES_BASE_URL": ""}, clear=False)

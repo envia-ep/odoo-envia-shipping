@@ -15,8 +15,13 @@ PRODUCTION_API_BASE_URL = "https://api-clients.envia.com/"
 SANDBOX_QUERIES_BASE_URL = "https://queries-test.envia.com/"
 PRODUCTION_QUERIES_BASE_URL = "https://queries.envia.com/"
 DEFAULT_CHECKOUT_PATH = "v2/checkout/odoo/{shop_id}"
-DEFAULT_ECOMMERCE_PRIVATE_BASE_URL = "https://ecommerce-api-new.herokuapp.com/"
 DEFAULT_PACKAGE_DIMENSIONS_PATH = "package/dimensions/test/{shop_id}"
+DEFAULT_LABEL_CREATE_PATH = "label/create/{shop_id}"
+DEFAULT_ORDER_SHIPMENTS_UNLINK_PATH = (
+    "orders/{shop_id}/{order_id}/fulfillment/order-shipments"
+)
+# Public Envia track page; {tracking} replaced by carrier_tracking_ref.
+ENVIA_PUBLIC_TRACKING_URL = "https://envia.com/rastreo?label={tracking}"
 
 
 def get_envia_environment_from_env() -> str | None:
@@ -74,9 +79,10 @@ def get_envia_checkout_path(shop_id: str) -> str:
     return template.format(shop_id=shop_id)
 
 
-def get_envia_ecommerce_private_base_url() -> str:
+def get_envia_ecommerce_private_base_url() -> str | None:
+    """Ecommerce private API host from ``ENVIA_ECOMMERCE_PRIVATE_BASE_URL`` only."""
     value = os.environ.get(ECOMMERCE_PRIVATE_BASE_URL_ENV, "").strip()
-    return _normalize_base_url(value) if value else DEFAULT_ECOMMERCE_PRIVATE_BASE_URL
+    return _normalize_base_url(value) if value else None
 
 
 def get_envia_package_dimensions_path(shop_id: str) -> str:
@@ -85,6 +91,17 @@ def get_envia_package_dimensions_path(shop_id: str) -> str:
         or DEFAULT_PACKAGE_DIMENSIONS_PATH
     )
     return template.format(shop_id=shop_id)
+
+
+def get_envia_label_create_path(shop_id: str) -> str:
+    return DEFAULT_LABEL_CREATE_PATH.format(shop_id=shop_id)
+
+
+def get_envia_order_shipments_unlink_path(shop_id: str, order_id: int | str) -> str:
+    return DEFAULT_ORDER_SHIPMENTS_UNLINK_PATH.format(
+        shop_id=shop_id,
+        order_id=order_id,
+    )
 
 
 def get_envia_api_base_url(company) -> str:

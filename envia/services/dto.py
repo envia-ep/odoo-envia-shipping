@@ -116,32 +116,6 @@ class CreateShipmentResponse:
     label_url: str | None
     pricing_total: float | None = None
     pricing_currency: str | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class TrackingEvent:
-    timestamp: str
-    location: str | None
-    description: str
-    status: str | None = None
-
-
-@dataclass
-class TrackResult:
-    tracking_number: str
-    status: str
-    carrier: str | None = None
-    events: list[TrackingEvent] = field(default_factory=list)
-
-
-@dataclass
-class TrackRequest:
-    tracking_numbers: list[str]
-    carrier: str | None = None
-
-
-@dataclass
-class TrackResponse:
-    results: list[TrackResult]
+    # Envia ecommerce order id (label/create ``orderId``); used for unlink DELETE.
+    order_id: int | str | None = None
     raw: dict[str, Any] = field(default_factory=dict)

@@ -10,10 +10,19 @@
                     <field name="envia_has_api_token" invisible="1"/>
                     <field name="envia_oauth_connected" invisible="1"/>
 
-                    <block title="Connection"
-                           help="Link your Odoo store with Envia.com and manage integration credentials.">
-                        <setting string="Envia.com"
-                                 help="Connect your store with Envia.com. Only administrators can refresh the integration token.">
+                    <block>
+                        <div class="o_envia_settings_section_header w-100 mb-3">
+                            <h2 class="mb-1">
+                                <field name="envia_ui_connection_title" nolabel="1" readonly="1"/>
+                            </h2>
+                            <div class="text-muted">
+                                <field name="envia_ui_connection_help" nolabel="1" readonly="1"/>
+                            </div>
+                        </div>
+                        <setting string="Envia.com">
+                            <div class="text-muted small mb-2 o_envia_settings_connect_help">
+                                <field name="envia_ui_connect_help" nolabel="1" readonly="1"/>
+                            </div>
                             <div class="o_envia_settings_connection_card">
                                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                                     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -38,21 +47,27 @@
                                 </div>
                                 <div class="o_envia_settings_version_row d-flex flex-wrap gap-2 mt-2">
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">Shop ID</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_shop_id_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_shop_id_display"
                                                nolabel="1"
                                                readonly="1"
                                                class="oe_inline"/>
                                     </span>
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">Company ID</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_company_id_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_company_id_display"
                                                nolabel="1"
                                                readonly="1"
                                                class="oe_inline"/>
                                     </span>
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">User ID</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_user_id_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_user_id_display"
                                                nolabel="1"
                                                readonly="1"
@@ -66,7 +81,9 @@
                                                class="oe_inline"/>
                                     </span>
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">Module</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_module_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_module_version_display"
                                                nolabel="1"
                                                readonly="1"
@@ -75,9 +92,13 @@
                                 </div>
                             </div>
                         </setting>
-                        <setting string="Odoo API key"
-                                 help="API key Envia.com uses to call back into Odoo. Generate it here and copy it into your Envia.com integration setup."
-                                 groups="base.group_system">
+                        <setting groups="base.group_system">
+                            <div class="o_form_label">
+                                <field name="envia_ui_api_key_title" nolabel="1" readonly="1"/>
+                            </div>
+                            <div class="text-muted small mb-2">
+                                <field name="envia_ui_api_key_help" nolabel="1" readonly="1"/>
+                            </div>
                             <field name="envia_integration_api_key"
                                    widget="envia_api_key"
                                    nolabel="1"
@@ -93,9 +114,13 @@
                                 </span>
                             </div>
                         </setting>
-                        <setting string="Envia shipping token"
-                                 help="Bearer token for api.envia.com (quoting, labels, tracking). Saved automatically by Envia.com during integration."
-                                 groups="base.group_system">
+                        <setting groups="base.group_system">
+                            <div class="o_form_label">
+                                <field name="envia_ui_shipping_token_title" nolabel="1" readonly="1"/>
+                            </div>
+                            <div class="text-muted small mb-2">
+                                <field name="envia_ui_shipping_token_help" nolabel="1" readonly="1"/>
+                            </div>
                             <field name="envia_api_token_display"
                                    widget="envia_api_key"
                                    nolabel="1"
@@ -128,6 +153,25 @@
                                         </div>
                                     </div>
                                     <field name="envia_enable_branches" nolabel="1"/>
+                                </div>
+                                <div class="o_envia_settings_toggle_row">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Enable label generation</div>
+                                        <div class="text-muted small">
+                                            Show Generate Label on sales orders, delivery orders, and the Envia quote wizard. Required to create shipping labels.
+                                        </div>
+                                    </div>
+                                    <field name="envia_enable_labels" nolabel="1"/>
+                                </div>
+                                <div class="o_envia_settings_toggle_row"
+                                     invisible="not envia_enable_labels">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Legacy Create Label (ship/generate)</div>
+                                        <div class="text-muted small">
+                                            Optional wizard path via ship/generate. Delivery buttons Generate / Replace Envia Label use ecommerce label/create.
+                                        </div>
+                                    </div>
+                                    <field name="envia_use_legacy_create" nolabel="1"/>
                                 </div>
                             </div>
                         </setting>
