@@ -121,14 +121,24 @@ class EnviaClient:
         )
 
     @staticmethod
+    def humanize_api_message(message) -> str:
+        text = str(message or "").strip()
+        if "feature not enabled" in text.casefold():
+            return _(
+                'Turn on "Label generation from the store" in Envia for this shop, then try again.'
+            )
+        return text
+
+    @staticmethod
     def _response_error_message(body, response) -> str:
+        raw = response.text
         if isinstance(body, dict):
-            return body.get("message") or body.get("error") or response.text
-        if isinstance(body, list) and body:
+            raw = body.get("message") or body.get("error") or response.text
+        elif isinstance(body, list) and body:
             first = body[0]
             if isinstance(first, dict):
-                return first.get("message") or first.get("error") or response.text
-        return response.text
+                raw = first.get("message") or first.get("error") or response.text
+        return EnviaClient.humanize_api_message(raw)
 
     def _get(
         self,

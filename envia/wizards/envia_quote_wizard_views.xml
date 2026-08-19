@@ -11,7 +11,6 @@
                     <field name="can_generate_label" invisible="1"/>
                     <field name="envia_enable_labels" invisible="1"/>
                     <field name="envia_branches_enabled" invisible="1"/>
-                    <field name="can_apply_shipping_to_order" invisible="1"/>
                     <field name="sale_order_state" invisible="1"/>
                     <field name="origin_readonly" invisible="1"/>
                     <field name="destination_partner_readonly" invisible="1"/>
@@ -337,23 +336,22 @@
                     </div>
                 </sheet>
                 <footer>
-                    <div class="text-danger me-auto" role="alert"
-                         invisible="can_get_rates or not blocking_message">
-                        <field name="blocking_message" readonly="1" nolabel="1"/>
-                    </div>
-                    <div class="text-muted me-auto" invisible="not selected_service_label">
-                        <field name="selected_service_label" readonly="1" nolabel="1"/>
-                    </div>
-                    <div class="text-warning me-auto" role="status"
-                         invisible="can_generate_label or not selected_service_label">
-                        Select the required pickup locations to generate the label.
+                    <div class="me-auto">
+                        <div class="text-danger" role="alert"
+                             invisible="can_get_rates or not blocking_message">
+                            <field name="blocking_message" readonly="1" nolabel="1"/>
+                        </div>
+                        <div class="text-muted" invisible="not selected_service_label">
+                            <field name="selected_service_label" readonly="1" nolabel="1"/>
+                        </div>
+                        <div class="text-warning" role="status"
+                             invisible="can_generate_label or not selected_service_label">
+                            Select the required pickup locations to generate the label.
+                        </div>
                     </div>
                     <button name="action_get_quote" type="object"
                             string="Get Rates" class="btn-primary"
                             invisible="not can_get_rates or service_line_ids"/>
-                    <button name="action_apply_shipping_to_order" type="object"
-                            string="Apply shipping cost" class="btn-primary"
-                            invisible="not can_apply_shipping_to_order"/>
                     <button name="action_confirm_selection" type="object"
                             string="Generate Label" class="btn-primary"
                             invisible="not envia_enable_labels or not can_generate_label"/>

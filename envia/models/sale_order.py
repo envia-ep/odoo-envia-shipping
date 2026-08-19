@@ -192,6 +192,11 @@ class SaleOrder(models.Model):
 
     def _get_active_envia_quote(self):
         self.ensure_one()
+        forced = self.env.context.get("envia_force_quote_id")
+        if forced:
+            quote = self.env["envia.quote"].browse(forced)
+            if quote.exists():
+                return quote
         return self.envia_quote_ids.filtered(
             lambda quote: quote._is_label_ready()
         ).sorted("id", reverse=True)[:1]

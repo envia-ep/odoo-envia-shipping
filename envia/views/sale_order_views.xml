@@ -36,9 +36,10 @@
                     <field name="envia_summary" nolabel="1" readonly="1"/>
                 </div>
             </xpath>
-            <xpath expr="//header" position="inside">
+            <xpath expr="//header/field[@name='state']" position="before">
                 <button name="action_envia_reship" type="object" string="Reship"
-                        class="btn-secondary" invisible="not envia_can_reship"/>
+                        class="btn-primary" display="always"
+                        invisible="not envia_can_reship"/>
             </xpath>
             <xpath expr="//div[@name='button_box']" position="inside">
                 <button type="object" name="action_view_envia_quotes" class="oe_stat_button"

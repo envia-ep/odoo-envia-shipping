@@ -132,7 +132,7 @@ export class EnviaGenericFormDialog extends Component {
             countryCode: (this.props.countryCode || "MX").toUpperCase(),
             formType: this.props.formType || "address_info",
             phoneCode: this.props.phoneCode || "+52",
-            queriesBase: (this.props.queriesBase || "https://queries-test.envia.com").replace(
+            queriesBase: (this.props.queriesBase || "https://queries.test.envia.com").replace(
                 /\/?$/,
                 ""
             ),
@@ -347,7 +347,9 @@ export class EnviaGenericFormDialog extends Component {
             this.state.values = values;
             this.state.options = options;
             if (!this._initialApplied) {
-                if (this.props.initialValues) {
+                // Empty ``{}`` is truthy — treat as missing so the
+                // preselected warehouse still seeds identity/address.
+                if (this._hasInitialValues()) {
                     await this.applyInitialValues();
                 } else {
                     await this.fillFromSelectedWarehouse();
@@ -364,12 +366,16 @@ export class EnviaGenericFormDialog extends Component {
         }
     }
 
-    async applyInitialValues() {
+    _hasInitialValues() {
         const initial = this.props.initialValues;
-        if (!initial || typeof initial !== "object") {
+        return Boolean(initial && typeof initial === "object" && Object.keys(initial).length);
+    }
+
+    async applyInitialValues() {
+        if (!this._hasInitialValues()) {
             return;
         }
-        await this.applyWarehouseDefaults(initial);
+        await this.applyWarehouseDefaults(this.props.initialValues);
     }
 
     async applyWarehouseDefaults(defaults) {
@@ -413,8 +419,28 @@ export class EnviaGenericFormDialog extends Component {
             return;
         }
         const zipField = this.state.schema.find((field) => fieldKey(field) === "postal_code");
-        if (zipField) {
-            await this.runOnChange(zipField, zip);
+        if (!zipField) {
+            return;
+        }
+        // Seed before zip on_change; geocode may clear city/state or leave {{tokens}}.
+        const prior = {
+            city: String(this.state.values.city || "").trim(),
+            state: String(this.state.values.state || "").trim(),
+            district: String(this.state.values.district || "").trim(),
+        };
+        await this.runOnChange(zipField, zip);
+        const patch = {};
+        for (const [key, before] of Object.entries(prior)) {
+            if (!before) {
+                continue;
+            }
+            const current = String(this.state.values[key] || "").trim();
+            if (!current || current.includes("{{")) {
+                patch[key] = before;
+            }
+        }
+        if (Object.keys(patch).length) {
+            this.state.values = { ...this.state.values, ...patch };
         }
     }
 
@@ -551,7 +577,15 @@ export class EnviaGenericFormDialog extends Component {
         }
         const name = (meta.name || "response").trim();
         const body = await this.orm.call(MODEL, "fetch_public_json", [url]);
-        this.state.context = { ...this.state.context, [name]: body };
+        // Parity with wizard ``_apply_request_action``: zipcode returns a list.
+        let payload = body;
+        const dataPath = String(meta.data_path || "").trim();
+        if (Array.isArray(body) && body.length) {
+            if (dataPath === "[0]" || (!dataPath && name === "geocodes")) {
+                payload = body[0];
+            }
+        }
+        this.state.context = { ...this.state.context, [name]: payload };
     }
 
     applyTemporalContext(meta) {
@@ -579,6 +613,7 @@ export class EnviaGenericFormDialog extends Component {
         const cityOpts = this.state.options.city_select || this.state.options.city || [];
         const selectedName =
             cityOpts.find((opt) => opt.key === selectedValue)?.name || selectedValue;
+        const ctx = this.state.context || {};
         for (const [target, template] of Object.entries(map)) {
             let value = String(template ?? "");
             value = value
@@ -586,9 +621,19 @@ export class EnviaGenericFormDialog extends Component {
                 .replaceAll("$city", selectedValue || "")
                 .replaceAll("{{$city_name}}", selectedName || "")
                 .replaceAll("{{$state}}", this.state.values.state || "")
-                .replaceAll("$state", this.state.values.state || "");
-            value = value.replace(/\{\{geocodes\.([^}]+)\}\}/g, (_, path) => {
-                const resolved = this.pathGet(this.state.context.geocodes, path);
+                .replaceAll("$state", this.state.values.state || "")
+                .replaceAll("{{state_code}}", String(ctx.state_code || ""));
+            // Resolve {{geocodes.*}} and remaining {{contextKey}} (Python parity).
+            value = value.replace(/\{\{([^}]+)\}\}/g, (match, rawPath) => {
+                const path = String(rawPath).trim();
+                let resolved;
+                if (path.startsWith("geocodes.")) {
+                    resolved = this.pathGet(ctx.geocodes, path.slice(9));
+                } else if (Object.prototype.hasOwnProperty.call(ctx, path)) {
+                    resolved = ctx[path];
+                } else {
+                    return match;
+                }
                 return resolved == null ? "" : String(resolved);
             });
             next[target] = value;
@@ -785,7 +830,9 @@ export class EnviaGenericFormDialog extends Component {
                 this.state.warehouseId || false,
             ]);
             this.notification.add(
-                `${_t("Origin address saved and linked to the shop.")} (${result.address_id})`,
+                result.reused
+                    ? `${_t("This origin address already exists in Envia. It was linked to the shop.")} (${result.address_id})`
+                    : `${_t("Origin address saved and linked to the shop.")} (${result.address_id})`,
                 { type: "success" }
             );
             this.props.close();
@@ -809,8 +856,8 @@ function openEnviaGenericForm(env, action) {
         countryCode: params.country_code || "MX",
         formType: params.form || "address_info",
         phoneCode: params.phone_code || "+52",
-        queriesBase: params.queries_base_url || "https://queries-test.envia.com",
-        initialValues: params.initial_values || {},
+        queriesBase: params.queries_base_url || "https://queries.test.envia.com",
+        initialValues: params.initial_values || undefined,
         warehouseId: params.warehouse_id || undefined,
     });
 }

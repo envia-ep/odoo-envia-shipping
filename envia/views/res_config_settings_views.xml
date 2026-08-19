@@ -158,20 +158,10 @@
                                     <div class="o_envia_settings_toggle_copy">
                                         <div class="o_form_label">Enable label generation</div>
                                         <div class="text-muted small">
-                                            Show Generate Label on sales orders, delivery orders, and the Envia quote wizard. Required to create shipping labels.
+                                            Show Generate Envia Label on deliveries and Generate Label in the quote wizard.
                                         </div>
                                     </div>
-                                    <field name="envia_enable_labels" nolabel="1"/>
-                                </div>
-                                <div class="o_envia_settings_toggle_row"
-                                     invisible="not envia_enable_labels">
-                                    <div class="o_envia_settings_toggle_copy">
-                                        <div class="o_form_label">Legacy Create Label (ship/generate)</div>
-                                        <div class="text-muted small">
-                                            Optional wizard path via ship/generate. Delivery buttons Generate / Replace Envia Label use ecommerce label/create.
-                                        </div>
-                                    </div>
-                                    <field name="envia_use_legacy_create" nolabel="1"/>
+                                    <field name="envia_enable_labels" widget="envia_enable_labels" nolabel="1"/>
                                 </div>
                             </div>
                         </setting>

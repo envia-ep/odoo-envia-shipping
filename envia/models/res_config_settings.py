@@ -75,10 +75,6 @@ class ResConfigSettings(models.TransientModel):
         related="company_id.envia_enable_labels",
         readonly=False,
     )
-    envia_use_legacy_create = fields.Boolean(
-        related="company_id.envia_use_legacy_create",
-        readonly=False,
-    )
     envia_show_quote_archive = fields.Boolean(
         related="company_id.envia_show_quote_archive",
         readonly=False,

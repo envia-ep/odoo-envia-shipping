@@ -120,6 +120,7 @@ class TestWebsitePickupService(TransactionCase):
                     "carrier": "dhl",
                     "carrierDescription": "DHL",
                     "service": "express",
+                    "serviceId": 101,
                     "serviceDescription": "Express",
                     "totalPrice": 120.0,
                     "currency": self.order.currency_id.name,
@@ -130,6 +131,7 @@ class TestWebsitePickupService(TransactionCase):
                     "carrier": "fedex",
                     "carrierDescription": "FedEx",
                     "service": "ground",
+                    "serviceId": 202,
                     "serviceDescription": "Ground",
                     "totalPrice": 95.0,
                     "currency": self.order.currency_id.name,
@@ -140,6 +142,7 @@ class TestWebsitePickupService(TransactionCase):
                     "carrier": "paquetexpress",
                     "carrierDescription": "Paquetexpress",
                     "service": "ocurre",
+                    "serviceId": 303,
                     "serviceDescription": "Ocurre",
                     "totalPrice": 90.0,
                     "currency": self.order.currency_id.name,
@@ -204,7 +207,9 @@ class TestWebsitePickupService(TransactionCase):
         self.assertEqual(options[0]["carrier"], "fedex")
         self.assertEqual(options[0]["price"], 95.0)
         self.assertEqual(options[0]["base_price"], 95.0)
+        self.assertEqual(options[0]["envia_service_id"], 202)
         self.assertEqual(options[1]["carrier"], "dhl")
+        self.assertEqual(options[1]["envia_service_id"], 101)
 
     def test_list_ship_rates_includes_carrier_fixed_margin(self):
         self.carrier.fixed_margin = 0.99
@@ -730,6 +735,29 @@ class TestWebsitePickupService(TransactionCase):
         delivery = self.order.order_line.filtered("is_delivery")
         self.assertAlmostEqual(delivery.price_unit, 120.0)
         self.assertEqual(self.order._get_active_envia_quote().selected_service_id.service_id, "dhl:express")
+
+    def test_apply_ship_selection_persists_envia_service_id(self):
+        """Checkout select must store Envia numeric serviceId on SO/quote."""
+        payload = {
+            "route_type": "ship",
+            "carrier": "dhl",
+            "carrier_name": "DHL",
+            "service_id": "dhl:express",
+            "envia_service_id": 101,
+            "service": "Express",
+            "base_price": 120.0,
+            "price": 120.0,
+            "drop_off": 0,
+        }
+        with patch(
+            "odoo.addons.envia.services.website_pickup.PayloadMapper"
+            ".build_quote_request_from_sale_order",
+            return_value=self._base_request(),
+        ):
+            self.service.apply_selection(self.order, payload)
+        quote = self.order._get_active_envia_quote()
+        self.assertEqual(quote.selected_service_id.envia_service_id, 101)
+        self.assertEqual(self.order.envia_service_id, 101)
 
     def test_payment_guard_requires_envia_selection(self):
         self.order.carrier_id = self.carrier

@@ -84,6 +84,7 @@ credentials from Envia.com before release.
             "envia/static/src/scss/envia_wizards.scss",
             "envia/static/src/js/envia_api_key_field.js",
             "envia/static/src/xml/envia_api_key_field.xml",
+            "envia/static/src/js/envia_enable_labels_field.js",
             "envia/static/src/js/envia_dashboard_action.js",
             "envia/static/src/xml/envia_dashboard_action.xml",
             "envia/static/src/js/envia_plugin_connect_wizard_form.js",

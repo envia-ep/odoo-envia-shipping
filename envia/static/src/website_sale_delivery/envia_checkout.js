@@ -141,6 +141,7 @@ patch(Checkout.prototype, {
             carrier: option.carrier,
             carrier_name: option.carrier_name,
             service_id: option.service_id,
+            envia_service_id: option.envia_service_id,
             service: option.service,
             branch_code: option.branch_code,
             name: option.name,

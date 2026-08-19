@@ -1,6 +1,7 @@
 /** @odoo-module **/
 
 import { _t } from "@web/core/l10n/translation";
+import { ORM } from "@web/core/orm_service";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { FormController } from "@web/views/form/form_controller";
@@ -14,6 +15,7 @@ const POPUP_CLOSED_WATCH_MS = 500;
 // After close: Envia callback may commit a moment later.
 const VERIFY_AFTER_CLOSE_ATTEMPTS = 6;
 const VERIFY_AFTER_CLOSE_DELAY_MS = 1000;
+const POLL_WHILE_WAITING_MS = 2000;
 
 /**
  * Survives FormController remount after action_run_integration writes state.
@@ -23,11 +25,24 @@ const sharedEnviaPopup = {
     window: null,
     watchTimer: null,
     wizardId: null,
-    orm: null,
     actionService: null,
     loadRecord: null,
     verifying: false,
+    resolved: false,
 };
+
+/** Survives FormController remount/destroy after successful connect. */
+const detachedOrm = new ORM();
+
+function isDestroyedComponentError(error) {
+    return error?.message === "Component is destroyed";
+}
+
+function markIntegrationResolved() {
+    sharedEnviaPopup.resolved = true;
+    stopSharedCloseWatch();
+    sharedEnviaPopup.window = null;
+}
 
 function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,37 +57,66 @@ function stopSharedCloseWatch() {
 
 async function verifyAfterSharedPopupClosed() {
     const wizardId = sharedEnviaPopup.wizardId;
-    const orm = sharedEnviaPopup.orm;
     const actionService = sharedEnviaPopup.actionService;
-    if (sharedEnviaPopup.verifying || !wizardId || !orm || !actionService) {
+    if (
+        sharedEnviaPopup.resolved ||
+        sharedEnviaPopup.verifying ||
+        !wizardId ||
+        !actionService
+    ) {
         return;
     }
     sharedEnviaPopup.verifying = true;
     stopSharedCloseWatch();
     try {
         for (let attempt = 0; attempt < VERIFY_AFTER_CLOSE_ATTEMPTS; attempt++) {
+            if (sharedEnviaPopup.resolved) {
+                return;
+            }
             if (attempt > 0) {
                 await delay(VERIFY_AFTER_CLOSE_DELAY_MS);
             }
-            const nextAction = await orm.call(
+            const nextAction = await detachedOrm.call(
                 "envia.plugin.connect.wizard",
                 "action_poll_integration_status",
                 [[wizardId]]
             );
             if (nextAction && nextAction.type) {
-                await actionService.doAction(nextAction);
+                markIntegrationResolved();
+                try {
+                    await actionService.doAction(nextAction);
+                } catch (error) {
+                    if (!isDestroyedComponentError(error)) {
+                        throw error;
+                    }
+                }
                 return;
             }
         }
-        const cancelAction = await orm.call(
+        if (sharedEnviaPopup.resolved) {
+            return;
+        }
+        const cancelAction = await detachedOrm.call(
             "envia.plugin.connect.wizard",
             "action_on_external_popup_closed",
             [[wizardId]]
         );
         if (cancelAction && cancelAction.type) {
-            await actionService.doAction(cancelAction);
+            try {
+                await actionService.doAction(cancelAction);
+            } catch (error) {
+                if (!isDestroyedComponentError(error)) {
+                    throw error;
+                }
+            }
         } else if (sharedEnviaPopup.loadRecord) {
-            await sharedEnviaPopup.loadRecord();
+            try {
+                await sharedEnviaPopup.loadRecord();
+            } catch (error) {
+                if (!isDestroyedComponentError(error)) {
+                    throw error;
+                }
+            }
         }
     } finally {
         sharedEnviaPopup.verifying = false;
@@ -109,6 +153,28 @@ export class EnviaPluginConnectWizardController extends FormController {
                     return;
                 }
                 this._ensureCloseWatchFromSharedPopup(record);
+                const pollTimer = setInterval(async () => {
+                    if (!record.resId || sharedEnviaPopup.resolved) {
+                        return;
+                    }
+                    try {
+                        const nextAction = await this.orm.call(
+                            "envia.plugin.connect.wizard",
+                            "action_poll_integration_status",
+                            [[record.resId]]
+                        );
+                        if (nextAction && nextAction.type) {
+                            clearInterval(pollTimer);
+                            markIntegrationResolved();
+                            await this.actionService.doAction(nextAction);
+                        }
+                    } catch (error) {
+                        if (!isDestroyedComponentError(error)) {
+                            throw error;
+                        }
+                    }
+                }, POLL_WHILE_WAITING_MS);
+                return () => clearInterval(pollTimer);
             },
             () => [this.model.root.data.state, this.model.root.resId]
         );
@@ -141,7 +207,6 @@ export class EnviaPluginConnectWizardController extends FormController {
     }
 
     _syncSharedServices(wizardId) {
-        sharedEnviaPopup.orm = this.orm;
         sharedEnviaPopup.actionService = this.actionService;
         sharedEnviaPopup.loadRecord = () => this.model.root.load();
         if (wizardId) {
@@ -203,6 +268,7 @@ export class EnviaPluginConnectWizardController extends FormController {
             return;
         }
         this._syncSharedServices(record.resId);
+        sharedEnviaPopup.resolved = false;
         // window.open (not act_url): only then can we read popup.closed.
         const features = record.data.integration_use_sized_popup ? this._buildPopupFeatures() : "";
         const popup = window.open(url, ENVIA_POPUP_WINDOW_NAME, features);

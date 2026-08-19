@@ -55,6 +55,10 @@ class DeliveryCarrier(models.Model):
                 if existing and not existing.picking_id:
                     existing.picking_id = picking.id
             if existing:
+                picking._envia_ensure_chatter_label(
+                    label_url=existing.label_url,
+                    tracking_number=existing.tracking_number,
+                )
                 result.append(
                     {
                         "exact_price": existing.pricing_total or 0.0,
@@ -65,6 +69,11 @@ class DeliveryCarrier(models.Model):
             # Core skips send_to_shipper once tracking exists; recover Envios + PDF.
             if (picking.carrier_tracking_ref or "").strip():
                 shipment = self._envia_recover_shipping_after_tracking(picking)
+                picking._envia_ensure_chatter_label(
+                    label_url=shipment.label_url,
+                    tracking_number=shipment.tracking_number
+                    or picking.carrier_tracking_ref,
+                )
                 result.append(
                     {
                         "exact_price": shipment.pricing_total or 0.0,
@@ -97,9 +106,22 @@ class DeliveryCarrier(models.Model):
             sale_order._envia_sync_service_id_from_quote(quote)
             # Regenerate path: unlink prior Envia fulfillment, then label/create.
             picking._envia_unlink_prior_fulfillments()
+            # ponytail: Envia label/create XML-RPC-writes stock.picking during this
+            # HTTP call. Holding the picking lock until the response makes Envia's
+            # proxy time out at ~30s (HTTP 503 HTML). Ceiling: if label/create
+            # fails after commit, shipping cost/unlink stay applied; retry Generate.
+            if not self.env.context.get("envia_skip_dedicated_cursor"):
+                self.env.cr.commit()
             adapter = get_envia_adapter(picking.company_id)
+            envia_service_id = (
+                quote.selected_service_id.envia_service_id
+                or sale_order.envia_service_id
+                or picking.envia_service_id
+            )
             try:
-                response = adapter.create_label_for_odoo_order(sale_order.id)
+                response = adapter.create_label_for_odoo_order(
+                    sale_order.id, envia_service_id
+                )
             except UserError as error:
                 message = str(error.args[0] if error.args else error).lower()
                 if "already fulfilled" not in message:
@@ -119,13 +141,21 @@ class DeliveryCarrier(models.Model):
                             "then try Generate again."
                         )
                     ) from error
-                response = adapter.create_label_for_odoo_order(sale_order.id)
+                if not self.env.context.get("envia_skip_dedicated_cursor"):
+                    self.env.cr.commit()
+                response = adapter.create_label_for_odoo_order(
+                    sale_order.id, envia_service_id
+                )
             # Commit Envios + Envia orderId outside this TX so a serialization
             # retry (Envia XML-RPC vs Core picking write) can reuse them.
             self._envia_commit_label_side_effects(
                 picking_id=picking.id,
                 quote_id=quote.id,
                 response=response,
+            )
+            picking._envia_ensure_chatter_label(
+                label_url=response.label_url,
+                tracking_number=response.tracking_number,
             )
             exact_price = quote.selected_service_id.price or 0.0
             if response.pricing_total not in (None, False):

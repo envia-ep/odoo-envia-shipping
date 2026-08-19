@@ -5,6 +5,7 @@ from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
 
 from odoo.addons.envia.services.envia_client import EnviaClient
+from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
 
 
 @tagged("post_install", "-at_install")
@@ -23,7 +24,7 @@ class TestEnviaClient(TransactionCase):
         )
         client = EnviaClient("https://api-test.envia.com/", "shipping-token")
         body = client.test_connection(
-            queries_base_url="https://queries-test.envia.com/",
+            queries_base_url="https://queries.test.envia.com/",
             country_code="MX",
         )
         self.assertEqual(len(body["data"]), 2)
@@ -42,7 +43,7 @@ class TestEnviaClient(TransactionCase):
         client = EnviaClient("https://api-test.envia.com/", "bad-token")
         with self.assertRaises(UserError):
             client.test_connection(
-                queries_base_url="https://queries-test.envia.com/",
+                queries_base_url="https://queries.test.envia.com/",
                 country_code="MX",
             )
 
@@ -56,7 +57,7 @@ class TestEnviaClient(TransactionCase):
         client = EnviaClient("https://api-test.envia.com/", "shipping-token")
         with self.assertRaises(UserError):
             client.test_connection(
-                queries_base_url="https://queries-test.envia.com/",
+                queries_base_url="https://queries.test.envia.com/",
                 country_code="MX",
             )
 
@@ -83,7 +84,7 @@ class TestEnviaClient(TransactionCase):
         )
         client = EnviaClient("https://api-test.envia.com/", "shipping-token")
         branches = client.get_branches(
-            queries_base_url="https://queries-test.envia.com/",
+            queries_base_url="https://queries.test.envia.com/",
             carrier="estafeta",
             country_code="MX",
             zipcode="64060",
@@ -92,7 +93,7 @@ class TestEnviaClient(TransactionCase):
         self.assertEqual(len(branches), 1)
         self.assertEqual(
             mock_get.call_args.args[0],
-            "https://queries-test.envia.com/branches/estafeta/MX",
+            "https://queries.test.envia.com/branches/estafeta/MX",
         )
         self.assertEqual(
             mock_get.call_args.kwargs["params"],
@@ -143,7 +144,7 @@ class TestEnviaClient(TransactionCase):
             text="[]",
         )
         fields = EnviaClient.get_generic_form(
-            "https://queries-test.envia.com/",
+            "https://queries.test.envia.com/",
             "MX",
             form="address_info",
         )
@@ -151,7 +152,7 @@ class TestEnviaClient(TransactionCase):
         self.assertEqual(fields[0]["fieldId"], "nombre")
         self.assertEqual(
             mock_get.call_args.args[0],
-            "https://queries-test.envia.com/generic-form",
+            "https://queries.test.envia.com/generic-form",
         )
         self.assertEqual(
             mock_get.call_args.kwargs["params"],
@@ -167,7 +168,7 @@ class TestEnviaClient(TransactionCase):
             text='{"fields": []}',
         )
         with self.assertRaises(UserError):
-            EnviaClient.get_generic_form("https://queries-test.envia.com/", "MX")
+            EnviaClient.get_generic_form("https://queries.test.envia.com/", "MX")
 
     @patch("odoo.addons.envia.services.envia_client.requests.get")
     def test_get_states_returns_data_list(self, mock_get):
@@ -180,11 +181,11 @@ class TestEnviaClient(TransactionCase):
             },
             text='{"data": []}',
         )
-        states = EnviaClient.get_states("https://queries-test.envia.com/", "CO")
+        states = EnviaClient.get_states("https://queries.test.envia.com/", "CO")
         self.assertEqual(len(states), 1)
         self.assertEqual(
             mock_get.call_args.args[0],
-            "https://queries-test.envia.com/state",
+            "https://queries.test.envia.com/state",
         )
         self.assertEqual(mock_get.call_args.kwargs["params"], {"country_code": "CO"})
 
@@ -197,11 +198,11 @@ class TestEnviaClient(TransactionCase):
             },
             text='{"data": []}',
         )
-        provinces = EnviaClient.get_provinces("https://queries-test.envia.com/", "AN")
+        provinces = EnviaClient.get_provinces("https://queries.test.envia.com/", "AN")
         self.assertEqual(len(provinces), 1)
         self.assertEqual(
             mock_get.call_args.args[0],
-            "https://queries-test.envia.com/provinces/AN",
+            "https://queries.test.envia.com/provinces/AN",
         )
 
     def test_refine_branches_near_zip_prefers_exact_postal_code(self):
@@ -232,12 +233,12 @@ class TestEnviaClient(TransactionCase):
         body = client._post(
             "shipments/bulk/cancel",
             {"shipments": [40772217]},
-            base_url="https://queries-test.envia.com/",
+            base_url="https://queries.test.envia.com/",
         )
         self.assertEqual(body, {"success": True})
         self.assertEqual(
             mock_post.call_args.args[0],
-            "https://queries-test.envia.com/shipments/bulk/cancel",
+            "https://queries.test.envia.com/shipments/bulk/cancel",
         )
         self.assertEqual(
             mock_post.call_args.kwargs["json"],
@@ -256,14 +257,27 @@ class TestEnviaClient(TransactionCase):
         body = client._delete(
             "orders/34165/110331/fulfillment/order-shipments",
             {"shipment_id": 179909},
-            base_url="https://queries-test.envia.com/",
+            base_url="https://queries.test.envia.com/",
         )
         self.assertEqual(body, {"success": True})
         self.assertEqual(
             mock_delete.call_args.args[0],
-            "https://queries-test.envia.com/orders/34165/110331/fulfillment/order-shipments",
+            "https://queries.test.envia.com/orders/34165/110331/fulfillment/order-shipments",
         )
         self.assertEqual(
             mock_delete.call_args.kwargs["json"],
             {"shipment_id": 179909},
         )
+
+    def test_label_create_feature_not_enabled_asks_to_enable_in_envia(self):
+        with self.assertRaises(UserError) as error:
+            EnviaOfficialAdapter._parse_label_create_response(
+                {
+                    "status": False,
+                    "message": "Feature not enabled for this shop.",
+                }
+            )
+        message = str(error.exception)
+        self.assertIn("Label generation from the store", message)
+        self.assertIn("Envia", message)
+        self.assertNotIn("Feature not enabled", message)

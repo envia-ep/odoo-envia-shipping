@@ -68,7 +68,7 @@ def build_integration_popup_url(
     user_id: int | None = None,
     ecommerce: str = "odoo",
     state: str = "fromPlugin",
-    origin: str = "odoo",
+    origin: str = "envia_odoo",
 ) -> str:
     """Build the Envia OAuth popup URL shown during plugin setup."""
     base_url = get_oauth_popup_url(env)

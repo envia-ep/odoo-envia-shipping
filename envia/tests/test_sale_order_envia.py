@@ -320,6 +320,35 @@ class TestSaleOrderEnvia(TransactionCase):
         self.assertEqual(services[0].service_id, "fedex:economy")
         self.assertEqual(services[0].price, 182.0)
 
+    def test_quote_raises_on_envia_checkout_meta_error(self):
+        from unittest.mock import MagicMock
+
+        from odoo.addons.envia.services.dto import QuoteRequest
+        from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
+
+        request = QuoteRequest(
+            origin_postal_code="67192",
+            origin_country="MX",
+            destination_postal_code="03100",
+            destination_country="MX",
+            weight=1.0,
+            content="Package",
+        )
+        client = MagicMock()
+        client._post.return_value = {
+            "meta": "error",
+            "error": {
+                "code": 1365,
+                "description": "Invalid Option",
+                "message": "Error processing request no carriers enabled",
+            },
+        }
+        adapter = EnviaOfficialAdapter(client, shop_id="34174")
+        with self.assertRaises(UserError) as error:
+            adapter.quote(request)
+        self.assertIn("enable Checkout", str(error.exception))
+        self.assertIn("carriers you want to quote", str(error.exception))
+
     def test_quote_filters_services_by_drop_off(self):
         from unittest.mock import MagicMock
 

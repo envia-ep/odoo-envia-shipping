@@ -156,16 +156,7 @@ class ResCompany(models.Model):
     envia_enable_labels = fields.Boolean(
         string="Enable Label Generation",
         default=True,
-        help="Show Generate Label on quotes and the quote wizard. "
-        "Delivery Generate / Replace buttons are always available for Envia.",
-    )
-    envia_use_legacy_create = fields.Boolean(
-        string="Use legacy ship/generate for Create Label wizard",
-        default=False,
-        help=(
-            "Optional: keep the Envia Generate Label wizard on ship/generate. "
-            "Delivery buttons Generate / Replace Envia Label use ecommerce label/create."
-        ),
+        help="Show Generate / Replace Envia Label on deliveries, quotes, and the quote wizard.",
     )
     envia_show_quote_archive = fields.Boolean(
         string="Show Quote Archive",

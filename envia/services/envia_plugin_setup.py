@@ -15,6 +15,16 @@ _integration_database_by_api_key: dict[str, str] = {}
 _integration_api_key_users: dict[str, tuple[int, str]] = {}
 
 
+def normalize_integration_store_url(base_url: str) -> str:
+    """Prefer HTTPS for dev tunnels when web.base.url was saved as http."""
+    base_url = (base_url or "").strip().rstrip("/")
+    if base_url.startswith("http://") and (
+        ".trycloudflare.com" in base_url or ".ngrok" in base_url
+    ):
+        return f"https://{base_url[7:]}"
+    return base_url
+
+
 def bind_integration_database(env, api_key: str, user=None) -> None:
     """Remember the database active when the user clicked Connect with Envia.com."""
     api_key = (api_key or "").strip()
@@ -117,7 +127,9 @@ def generate_integration_credentials(
         )
     )
     bind_integration_database(env, api_key, user=user)
-    base_url = env["ir.config_parameter"].sudo().get_param("web.base.url", "").rstrip("/")
+    base_url = normalize_integration_store_url(
+        env["ir.config_parameter"].sudo().get_param("web.base.url", "")
+    )
     return {
         "company_id": company.id,
         "store_url": base_url,

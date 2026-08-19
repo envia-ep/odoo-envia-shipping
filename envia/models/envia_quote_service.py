@@ -39,4 +39,5 @@ class EnviaQuoteService(models.Model):
                 else "draft"
             }
         )
+        quote._retire_sibling_quotes()
         return True

@@ -5,6 +5,7 @@ from odoo.tests.common import TransactionCase
 
 from odoo.addons.envia.services.envia_config import (
     DEFAULT_CHECKOUT_PATH,
+    DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
     DEFAULT_PACKAGE_DIMENSIONS_PATH,
     ENVIA_ENVIRONMENT_PARAM,
     get_envia_api_base_url,
@@ -64,7 +65,7 @@ class TestEnviaConfig(TransactionCase):
         company = self.env.company
         company.envia_environment = "production"
         self.assertEqual(get_envia_api_base_url(company), "https://api-test.envia.com/")
-        self.assertEqual(get_envia_queries_base_url(company), "https://queries-test.envia.com/")
+        self.assertEqual(get_envia_queries_base_url(company), "https://queries.test.envia.com/")
 
     @patch.dict(
         "os.environ",
@@ -112,8 +113,11 @@ class TestEnviaConfig(TransactionCase):
         {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "", "ENVIA_PACKAGE_DIMENSIONS_PATH": ""},
         clear=False,
     )
-    def test_ecommerce_private_base_url_requires_env(self):
-        self.assertIsNone(get_envia_ecommerce_private_base_url())
+    def test_ecommerce_private_base_url_defaults_without_env(self):
+        self.assertEqual(
+            get_envia_ecommerce_private_base_url(),
+            DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
+        )
         self.assertEqual(
             get_envia_package_dimensions_path("34084"),
             DEFAULT_PACKAGE_DIMENSIONS_PATH.format(shop_id="34084"),

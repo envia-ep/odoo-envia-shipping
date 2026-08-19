@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any
 import logging
 import re
@@ -85,6 +87,13 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             body = self.client._post(get_envia_checkout_path(self.shop_id), payload)
         except (UserError, EnviaApiError):
             raise
+        checkout_error = EnviaOfficialAdapter._checkout_error_message(body)
+        if checkout_error:
+            _logger.warning("Envia checkout meta error: %s", checkout_error)
+            raise UserError(_(
+                "To get shipping quotes, enable Checkout in Envia.com "
+                "and select the carriers you want to quote."
+            ))
 
         services = self._parse_checkout_rates(body, request)
         carriers = self._resolve_carriers(request.carriers)
@@ -133,10 +142,6 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
                 "Envia API token is missing. Check Settings > Envia Shipping."
             )
         ecommerce_base = get_envia_ecommerce_private_base_url()
-        if not ecommerce_base:
-            return "", _(
-                "Set ENVIA_ECOMMERCE_PRIVATE_BASE_URL on the Odoo server."
-            )
         payload = EnviaOfficialAdapter.build_package_dimensions_payload(items, currency)
         client = EnviaClient(ecommerce_base, token)
         try:
@@ -344,10 +349,15 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             lines.extend(f"- {error}" for error in carrier_errors[:5])
         return "\n".join(lines)
 
-    def create_label_for_odoo_order(self, order_id: int) -> CreateShipmentResponse:
+    def create_label_for_odoo_order(
+        self,
+        order_id: int,
+        service_id: int | str | None = None,
+    ) -> CreateShipmentResponse:
         """Create label via ecommerce ``POST label/create/{shop_id}``.
 
-        Body uses the Odoo ``sale.order`` database id (string).
+        Body uses the Odoo ``sale.order`` database id (string) and the selected
+        Envia numeric ``service_id``.
         """
         if not self.shop_id:
             raise UserError(
@@ -360,27 +370,35 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             raise UserError(
                 _("Envia API token is missing. Check Settings > Envia Shipping.")
             )
+        payload: dict[str, Any] = {"id": str(order_id)}
+        if sid := EnviaOfficialAdapter._label_create_service_id(service_id):
+            payload["service_id"] = sid
         ecommerce_base = get_envia_ecommerce_private_base_url()
-        if not ecommerce_base:
-            raise UserError(
-                _(
-                    "Set ENVIA_ECOMMERCE_PRIVATE_BASE_URL on the Odoo server "
-                    "to create Envia labels."
-                )
-            )
         client = EnviaClient(ecommerce_base, token)
         body = client._post(
             get_envia_label_create_path(self.shop_id),
-            {"id": str(order_id)},
+            payload,
         )
         return self._parse_label_create_response(body)
+
+    @staticmethod
+    def _label_create_service_id(service_id: int | str | None) -> int | None:
+        if service_id in (None, False, ""):
+            return None
+        try:
+            value = int(service_id)
+        except (TypeError, ValueError):
+            return None
+        return value or None
 
     @staticmethod
     def _parse_label_create_response(body: dict[str, Any]) -> CreateShipmentResponse:
         if not isinstance(body, dict):
             raise UserError(_("Envia label/create returned an invalid response."))
         if not body.get("status"):
-            message = body.get("message") or body.get("error") or body
+            message = EnviaClient.humanize_api_message(
+                body.get("message") or body.get("error") or body
+            )
             raise UserError(_("Envia did not generate a label: %s") % message)
         data = body.get("data") or {}
         labels = data.get("labels") if isinstance(data, dict) else None
@@ -494,7 +512,9 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
     ) -> CreateShipmentResponse:
         data_list = body.get("data")
         if not isinstance(data_list, list) or not data_list:
-            message = body.get("message") or body.get("error") or body
+            message = EnviaClient.humanize_api_message(
+                body.get("message") or body.get("error") or body
+            )
             _logger.error("Envia ship/generate empty data: %s", body)
             raise UserError(_("Envia did not generate a label: %s") % message)
 
@@ -742,6 +762,19 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         if contact.branch_code:
             payload["branchCode"] = contact.branch_code
         return payload
+
+    @staticmethod
+    def _checkout_error_message(body: Any) -> str:
+        if not isinstance(body, dict):
+            return ""
+        if str(body.get("meta") or "").lower() != "error":
+            return ""
+        error = body.get("error")
+        if isinstance(error, dict):
+            return str(
+                error.get("message") or error.get("description") or error.get("code") or ""
+            ).strip()
+        return str(body.get("message") or "").strip()
 
     @staticmethod
     def _normalize_checkout_rates_body(body: Any) -> list[dict[str, Any]]:

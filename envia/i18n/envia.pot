@@ -1149,6 +1149,26 @@ msgid "Enable label generation"
 msgstr ""
 
 #. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/js/envia_enable_labels_field.js:0
+msgid "Enable labels in Envia"
+msgstr ""
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/js/envia_enable_labels_field.js:0
+msgid ""
+"This only shows the buttons in Odoo. Also turn on \"Label generation from the store\" in Envia for this shop."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Show Generate Envia Label on deliveries and Generate Label in the quote "
+"wizard."
+msgstr ""
+
+#. module: envia
 #. odoo-python
 #: code:addons/envia/models/envia_quote.py:0
 msgid "Enable label generation in Settings > Envia.com before creating labels."
@@ -1536,6 +1556,13 @@ msgstr ""
 #. odoo-python
 #: code:addons/envia/services/envia_client.py:0
 msgid ""
+"Turn on \"Label generation from the store\" in Envia for this shop, then try again."
+msgstr ""
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_client.py:0
+msgid ""
 "Envia eshop quote endpoint was not found (HTTP 404). Refresh the OAuth "
 "connection or contact Envia support."
 msgstr ""
@@ -1808,6 +1835,11 @@ msgstr ""
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
 msgid "Generate API key"
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid "Generate Envia Label"
 msgstr ""
 
 #. module: envia
@@ -2515,6 +2547,14 @@ msgid "No shipping services available for this route."
 msgstr ""
 
 #. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_official_adapter.py:0
+msgid ""
+"To get shipping quotes, enable Checkout in Envia.com "
+"and select the carriers you want to quote."
+msgstr ""
+
+#. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
 msgid ""
 "No token stored yet. Complete the Envia.com connection or wait for the "
@@ -3137,6 +3177,11 @@ msgid "Refresh token"
 msgstr ""
 
 #. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid "Replace Envia Label"
+msgstr ""
+
+#. module: envia
 #: model:ir.model.fields,field_description:envia.field_envia_shipment__activity_user_id
 msgid "Responsible User"
 msgstr ""
@@ -3519,7 +3564,9 @@ msgstr ""
 #: model:ir.model.fields,help:envia.field_sale_order__envia_enable_labels
 #: model:ir.model.fields,help:envia.field_stock_picking__envia_enable_labels
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
-msgid "Show Generate Label actions on quotes, pickings, and the quote wizard."
+msgid ""
+"Show Generate / Replace Envia Label on deliveries, quotes, and the quote "
+"wizard."
 msgstr ""
 
 #. module: envia
@@ -3757,6 +3804,13 @@ msgstr ""
 #. odoo-python
 #: code:addons/envia/models/envia_shipment.py:0
 msgid "This shipment has no tracking number."
+msgstr ""
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid ""
+"This unlinks the current Envia label in Odoo (it does not cancel it on "
+"Envia). You will quote again and generate a new label. Continue?"
 msgstr ""
 
 #. module: envia
@@ -4825,6 +4879,15 @@ msgid ""
 "Tracking Number: <a href=\"%(tracking_url)s\" target=\"_blank\">"
 "%(tracking)s</a><br/>"
 "<a href=\"%(url)s\" target=\"_blank\">Open shipping label (PDF)</a>"
+msgstr ""
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/models/stock_picking.py:0
+msgid ""
+"Shipment created into Envia<br/>"
+"Tracking Number: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a>"
 msgstr ""
 
 #. module: envia

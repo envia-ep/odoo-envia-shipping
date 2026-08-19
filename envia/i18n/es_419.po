@@ -1198,6 +1198,29 @@ msgid "Enable label generation"
 msgstr "Habilitar generación de etiquetas"
 
 #. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/js/envia_enable_labels_field.js:0
+msgid "Enable labels in Envia"
+msgstr "Habilitar etiquetas en Envia"
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/js/envia_enable_labels_field.js:0
+msgid ""
+"This only shows the buttons in Odoo. Also turn on \"Label generation from the store\" in Envia for this shop."
+msgstr ""
+"Esto solo muestra los botones en Odoo. También habilite «Generación de etiquetas desde la tienda» en Envia para este shop."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Show Generate Envia Label on deliveries and Generate Label in the quote "
+"wizard."
+msgstr ""
+"Muestra Generar guía Envia en las entregas y Generar etiqueta en el "
+"asistente de cotización."
+
+#. module: envia
 #. odoo-python
 #: code:addons/envia/models/envia_quote.py:0
 msgid "Enable label generation in Settings > Envia.com before creating labels."
@@ -1595,6 +1618,14 @@ msgstr "Envia no generó una etiqueta: %s"
 #. odoo-python
 #: code:addons/envia/services/envia_client.py:0
 msgid ""
+"Turn on \"Label generation from the store\" in Envia for this shop, then try again."
+msgstr ""
+"Habilite «Generación de etiquetas desde la tienda» en Envia para este shop e intente de nuevo."
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_client.py:0
+msgid ""
 "Envia eshop quote endpoint was not found (HTTP 404). Refresh the OAuth "
 "connection or contact Envia support."
 msgstr ""
@@ -1883,6 +1914,11 @@ msgstr "Desde"
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
 msgid "Generate API key"
 msgstr "Generar clave API"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid "Generate Envia Label"
+msgstr "Generar guía Envia"
 
 #. module: envia
 #. odoo-python
@@ -2631,6 +2667,16 @@ msgid "No shipping services available for this route."
 msgstr "No hay servicios de envío disponibles para esta ruta."
 
 #. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_official_adapter.py:0
+msgid ""
+"To get shipping quotes, enable Checkout in Envia.com "
+"and select the carriers you want to quote."
+msgstr ""
+"Para cotizar, habilita Checkout en Envia.com "
+"y selecciona las paqueterías con las que deseas cotizar."
+
+#. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
 msgid ""
 "No token stored yet. Complete the Envia.com connection or wait for the "
@@ -3278,6 +3324,11 @@ msgid "Refresh token"
 msgstr "Actualizar token"
 
 #. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid "Replace Envia Label"
+msgstr "Reemplazar guía Envia"
+
+#. module: envia
 #: model:ir.model.fields,field_description:envia.field_envia_shipment__activity_user_id
 msgid "Responsible User"
 msgstr "Usuario responsable"
@@ -3670,10 +3721,12 @@ msgstr "Mostrar selector de sucursal de destino"
 #: model:ir.model.fields,help:envia.field_sale_order__envia_enable_labels
 #: model:ir.model.fields,help:envia.field_stock_picking__envia_enable_labels
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
-msgid "Show Generate Label actions on quotes, pickings, and the quote wizard."
+msgid ""
+"Show Generate / Replace Envia Label on deliveries, quotes, and the quote "
+"wizard."
 msgstr ""
-"Mostrar acciones de generar etiqueta en cotizaciones, albaranes y el "
-"asistente."
+"Muestra Generar / Reemplazar guía Envia en entregas, cotizaciones y el "
+"asistente de cotización."
 
 #. module: envia
 #: model:ir.model.fields,field_description:envia.field_choose_delivery_carrier__envia_show_origin_branch_picker
@@ -3930,6 +3983,15 @@ msgstr "Esta cotización expiró. Solicita una nueva cotización."
 #: code:addons/envia/models/envia_shipment.py:0
 msgid "This shipment has no tracking number."
 msgstr "Este envío no tiene número de rastreo."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid ""
+"This unlinks the current Envia label in Odoo (it does not cancel it on "
+"Envia). You will quote again and generate a new label. Continue?"
+msgstr ""
+"Esto desvincula la guía Envia actual en Odoo (no la cancela en Envia). "
+"Volverás a cotizar y generar una guía nueva. ¿Continuar?"
 
 #. module: envia
 #. odoo-python
@@ -5295,6 +5357,18 @@ msgstr ""
 "Número de seguimiento: <a href=\"%(tracking_url)s\" target=\"_blank\">"
 "%(tracking)s</a><br/>"
 "<a href=\"%(url)s\" target=\"_blank\">Abrir guía de envío (PDF)</a>"
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/models/stock_picking.py:0
+msgid ""
+"Shipment created into Envia<br/>"
+"Tracking Number: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a>"
+msgstr ""
+"Envío creado en Envia<br/>"
+"Número de seguimiento: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a>"
 
 #. module: envia
 #: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_shop_id_display

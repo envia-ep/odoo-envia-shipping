@@ -305,6 +305,13 @@ class WebsitePickupService:
         service_id = str(payload.get("service_id") or "")
         if not service_id and not carrier:
             return None
+        raw_envia_service_id = payload.get("envia_service_id")
+        envia_service_id = None
+        if raw_envia_service_id not in (None, False, ""):
+            try:
+                envia_service_id = int(raw_envia_service_id)
+            except (TypeError, ValueError):
+                envia_service_id = None
         return QuoteService(
             service_id=service_id or f"{carrier}:selected",
             carrier=carrier,
@@ -317,6 +324,7 @@ class WebsitePickupService:
             ),
             price=price,
             currency=order.currency_id.name,
+            envia_service_id=envia_service_id,
             drop_off=drop_off,
         )
 
@@ -767,6 +775,7 @@ class WebsitePickupService:
             "carrier_name": service.carrier_name or service.carrier,
             "service": service.service_name,
             "service_id": str(service.service_id),
+            "envia_service_id": service.envia_service_id,
             "name": f"{service.carrier_name or service.carrier} - {service.service_name}",
             "address": "",
             "base_price": base_price,
@@ -801,6 +810,7 @@ class WebsitePickupService:
             "carrier_name": service.carrier_name or branch["carrier"],
             "service": service.service_name,
             "service_id": str(service.service_id),
+            "envia_service_id": service.envia_service_id,
             "name": name,
             "address": branch.get("address")
             or WebsitePickupService._format_address(

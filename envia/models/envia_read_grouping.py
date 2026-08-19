@@ -30,11 +30,24 @@ class EnviaReadGroupingMixin(models.AbstractModel):
 
     def _get_envia_module_quote(self):
         self.ensure_one()
+        forced = self.env.context.get("envia_force_quote_id")
+        if forced:
+            quote = self.env["envia.quote"].browse(forced)
+            if quote.exists():
+                return quote
+        service_id = getattr(self, "envia_service_id", False)
+        quotes = self.envia_quote_ids
+        if service_id:
+            matched = quotes.filtered(
+                lambda item: item.selected_service_id.envia_service_id == service_id
+            ).sorted("id", reverse=True)[:1]
+            if matched:
+                return matched
         if hasattr(self, "_get_active_envia_quote"):
             quote = self._get_active_envia_quote()
             if quote:
                 return quote
-        return self.envia_quote_ids.filtered("selected_service_id")[:1]
+        return quotes.filtered("selected_service_id").sorted("id", reverse=True)[:1]
 
     def _envia_module_values(self):
         self.ensure_one()

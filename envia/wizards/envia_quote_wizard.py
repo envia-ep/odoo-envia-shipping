@@ -402,7 +402,6 @@ class EnviaQuoteWizard(models.TransientModel):
     show_origin_branch_picker = fields.Boolean(compute="_compute_branch_ui_state")
     show_destination_branch_picker = fields.Boolean(compute="_compute_branch_ui_state")
     can_generate_label = fields.Boolean(compute="_compute_form_state")
-    can_apply_shipping_to_order = fields.Boolean(compute="_compute_form_state")
     sale_order_state = fields.Selection(related="sale_order_id.state", readonly=True)
     origin_readonly = fields.Boolean(compute="_compute_origin_readonly")
     destination_partner_readonly = fields.Boolean(
@@ -828,11 +827,6 @@ class EnviaQuoteWizard(models.TransientModel):
                 and wizard.selected_service_label
                 and not label_errors
             )
-            wizard.can_apply_shipping_to_order = bool(
-                wizard.sale_order_id
-                and wizard.sale_order_id.state != "cancel"
-                and wizard.can_generate_label
-            )
             wizard.validation_summary = "\n".join(f"• {error}" for error in errors) if errors else False
             wizard.blocking_message = errors[0] if errors else False
 
@@ -883,10 +877,21 @@ class EnviaQuoteWizard(models.TransientModel):
             else:
                 wizard.fastest_delivery_label = False
 
-    @api.depends("sale_order_id", "sale_order_id.company_id", "sale_order_id.company_id.envia_enable_labels")
+    @api.depends(
+        "sale_order_id",
+        "sale_order_id.company_id",
+        "sale_order_id.company_id.envia_enable_labels",
+        "picking_id",
+        "picking_id.company_id",
+        "picking_id.company_id.envia_enable_labels",
+    )
     def _compute_envia_company_flags(self):
         for wizard in self:
-            company = wizard.sale_order_id.company_id or wizard.env.company
+            company = (
+                wizard.sale_order_id.company_id
+                or wizard.picking_id.company_id
+                or wizard.env.company
+            )
             wizard.envia_enable_labels = company.envia_enable_labels
             wizard.envia_show_quote_archive = company.envia_show_quote_archive
             wizard.envia_branches_enabled = company.envia_enable_branches
@@ -2891,6 +2896,7 @@ class EnviaQuoteWizard(models.TransientModel):
         if not selected:
             return False
         selected.is_selected = True
+        self._apply_wizard_rate_to_quote(selected)
         self._load_branches_for_selected_carrier()
         return False
 
@@ -2924,23 +2930,46 @@ class EnviaQuoteWizard(models.TransientModel):
 
     def _finalize_quote_selection(self):
         self.ensure_one()
-        self._validate_before_quote()
-        self._raise_validation_errors(
-            self._collect_validation_errors(
-                require_branches=self.destination_location_type == "branch"
-            )
-        )
-        self._perform_get_quote(clear_branch_lines=False)
         selected = self.service_line_ids.filtered("is_selected")[:1]
+        # ponytail: skip re-quote when a rate is already chosen; sandbox checkout
+        # often returns HTTP 200 + meta=error on the second call.
+        if not selected:
+            self._validate_before_quote()
+            self._raise_validation_errors(
+                self._collect_validation_errors(
+                    require_branches=self.destination_location_type == "branch"
+                )
+            )
+            self._perform_get_quote(clear_branch_lines=False)
+            selected = self.service_line_ids.filtered("is_selected")[:1]
         if not selected:
             raise UserError(_("Choose a shipping rate to continue."))
         quote = self.quote_id
         quote.write(self._quote_location_values())
-        service = quote.service_ids.filtered(
+        return self._apply_wizard_rate_to_quote(selected)
+
+    def _quote_service_matching_wizard_line(self, selected):
+        self.ensure_one()
+        quote = self.quote_id
+        if not quote or not selected:
+            return self.env["envia.quote.service"]
+        match = quote.service_ids.filtered(
             lambda line: line.service_id == selected.service_id
         )[:1]
+        if not match and selected.envia_service_id:
+            match = quote.service_ids.filtered(
+                lambda line: line.envia_service_id == selected.envia_service_id
+            )[:1]
+        return match
+
+    def _apply_wizard_rate_to_quote(self, selected=None):
+        """Write the wizard card onto envia.quote so label/create sees it."""
+        self.ensure_one()
+        selected = selected or self.service_line_ids.filtered("is_selected")[:1]
+        service = self._quote_service_matching_wizard_line(selected)
         if service:
             service.action_select_service()
+            service.quote_id._retire_sibling_quotes()
         return service
 
     def _is_restored_from_quote(self, quote):
@@ -3116,31 +3145,31 @@ class EnviaQuoteWizard(models.TransientModel):
         if self.sale_order_id.state == "cancel":
             raise UserError(_("Shipping cost cannot be applied on a cancelled sale order."))
         self._finalize_quote_selection()
-        self.sale_order_id._sync_envia_shipping_line()
+        self._apply_shipping_cost_to_order()
         return {"type": "ir.actions.act_window_close"}
 
-    def action_confirm_selection(self):
-        """Persist selected rate, then create label via delivery label/create.
+    def _apply_shipping_cost_to_order(self):
+        self.ensure_one()
+        if not self.sale_order_id or self.sale_order_id.state == "cancel":
+            return
+        self.sale_order_id._sync_envia_shipping_line(self.quote_id)
 
-        Do not open the legacy ship/generate wizard unless Settings enables it
-        and there is no Envia delivery to use.
-        """
+    def action_confirm_selection(self):
+        """Persist selected rate, apply shipping cost, then create the label."""
         self.ensure_one()
         self._finalize_quote_selection()
+        if self.quote_id:
+            self.quote_id._retire_sibling_quotes()
+        self._apply_shipping_cost_to_order()
         picking = self.picking_id
         if not picking and self.sale_order_id:
             picking = self.sale_order_id.picking_ids.filtered(
                 lambda item: item.picking_type_code == "outgoing"
                 and item.state != "cancel"
             ).sorted("id", reverse=True)[:1]
+        generate_ctx = {}
+        if self.quote_id:
+            generate_ctx["envia_force_quote_id"] = self.quote_id.id
         if picking and picking.carrier_id.delivery_type == "envia":
-            return picking.action_envia_generate_label()
-        company = self.company_id or self.env.company
-        if company.envia_use_legacy_create:
-            return self.quote_id.action_open_create_shipment_wizard()
-        raise UserError(
-            _(
-                "Open the delivery and click Generate Envia Label, "
-                "or enable Legacy Create Label (ship/generate) in Settings."
-            )
-        )
+            return picking.with_context(**generate_ctx).action_envia_generate_label()
+        raise UserError(_("Open the delivery and click Generate Envia Label."))
