@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Envia.com API — guía de integración (plugin Odoo)</title>
+<style>
+body { font-family: Arial, Helvetica, sans-serif; max-width: 980px; margin: 24px auto; line-height: 1.45; color: #172b4d; }
+h1,h2,h3,h4 { color: #172b4d; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; }
+th, td { border: 1px solid #c1c7d0; padding: 6px 8px; text-align: left; vertical-align: top; }
+th { background: #f4f5f7; }
+pre { background: #f4f5f7; padding: 12px; overflow: auto; white-space: pre-wrap; border-radius: 4px; }
+code { font-family: Menlo, Consolas, monospace; font-size: 0.92em; }
+p code, li code, td code { background: #f4f5f7; padding: 1px 4px; border-radius: 3px; }
+blockquote { border-left: 4px solid #ffab00; background: #fffae6; margin: 12px 0; padding: 8px 12px; }
+</style>
+</head>
+<body>
+<h1>Envia.com API — guía de integración (plugin Odoo)</h1>
+<p>Documento para replicar el mismo flujo en otro ecommerce (WooCommerce, Magento o tienda propia) contra las APIs de Envia.com.</p>
+<p>El plugin de Odoo es un <strong>conector de tienda</strong>, no un SDK de shipping. Después del OAuth, Envia ya conoce el shop. Cotizaciones, guías y direcciones de origen van con <code>shop_id</code>.</p>
+<p>Hay dos sentidos de tráfico:</p>
+<ul><li><strong>Outbound:</strong> Odoo llama a hosts de Envia (OAuth, Shipping API, Queries, Ecommerce private, Geocodes).</li><li><strong>Inbound:</strong> Envia llama a Odoo (<code>/envia/integration/callback</code>, <code>/jsonrpc</code>, <code>/xmlrpc/2/common</code>, <code>/xmlrpc/2/object</code>).</li></ul>
+<blockquote><strong>Nota:</strong> Las rutas inbound requieren el puente <code>envia_http</code> en <code>server_wide_modules</code> para funcionar <strong>antes</strong> de seleccionar una base de datos.</blockquote>
+<h2>Qué hace el plugin</h2>
+<ul><li>Registrar la tienda y recibir <strong>shipping API token</strong> + <strong>shop id</strong>.</li><li>Crear una dirección de origen por defecto y ligarla al shop.</li><li>Pedir tarifas de checkout (domicilio y pickup).</li><li>Crear guías con el id de la orden de venta de Odoo (Envia ya tiene el contexto del carrito vía XML-RPC).</li><li>Desligar o cancelar una guía cuando el merchant la regenera.</li><li>Abrir el dashboard Ecommerce Pro en un iframe (solo hash, nunca el token).</li></ul>
+<h3>Ciclo de vida del plugin</h3>
+<table style="width:auto;border-collapse:separate;border-spacing:4px"><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Connect OAuth</td><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">→</td><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Origen / warehouse</td><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">→</td><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Checkout rates</td><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">→</td><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">label/create</td><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">→</td><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">¿Regenerar?</td><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">→</td><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Unlink → label/create  o  Tracking / iframe</td></tr></table>
+<blockquote><strong>Nota:</strong> En el HTML para Confluence los flujos van como tablas (sin imágenes externas). En GitHub se ven como diagramas Mermaid.</blockquote>
+<h2>Ambientes: sandbox vs production</h2>
+<p><code>ENVIA_ENVIRONMENT</code> es el único switch. Settings de la compañía <strong>no</strong> lo cambia.</p>
+<table><tr><th>Servicio</th><th>Sandbox / Docker <code>*envia-dev</code></th><th>Production / Docker <code>*envia-prod</code></th><th>Fallback del módulo (sin <code>ENVIA_*</code>)</th></tr><tr><td>Shipping API</td><td><code>https://api-test.envia.com</code></td><td><code>https://api.envia.com</code> (Compose)</td><td><code>https://api-clients.envia.com</code></td></tr><tr><td>Queries</td><td><code>https://queries.test.envia.com</code></td><td><code>https://queries.envia.com</code></td><td>igual que Compose prod</td></tr><tr><td>Ecommerce private</td><td><code>https://ecommerce-api-new.herokuapp.com</code></td><td><code>https://ecommerce-private.envia.com</code></td><td><code>https://ecommerce-private.envia.com</code></td></tr><tr><td>OAuth register</td><td><code>https://oauth-deve.herokuapp.com/oauth/{client}/integration/odoo</code></td><td><code>https://oauth.ecartapi.com/oauth/{client}/integration/odoo</code></td><td>URL eCart de production</td></tr><tr><td>OAuth popup</td><td><code>https://oauth-deve.herokuapp.com/{client}?ecommerce=odoo</code></td><td><code>https://oauth.ecartapi.com/{client}?ecommerce=odoo</code></td><td>URL eCart de production</td></tr><tr><td>Eshop verify</td><td><code>https://eshop-deve.herokuapp.com/api/v2/test</code></td><td><code>https://eshop.herokuapp.com/api/v2/test</code></td><td>deve (overridear con env)</td></tr><tr><td>Eshop accesses</td><td><code>https://eshop-deve.herokuapp.com/accesses/me</code></td><td><code>https://eshop.herokuapp.com/accesses/me</code></td><td>deve (overridear con env)</td></tr><tr><td>Ecommerce iframe</td><td><code>https://shipping-test.envia.com/ecommerce</code></td><td><code>https://shipping.envia.com/ecommerce</code></td><td>iframe de production</td></tr><tr><td>Geocodes</td><td><code>https://geocodes.envia.com</code></td><td>igual</td><td>igual</td></tr><tr><td>Tracking público</td><td><code>https://envia.com/rastreo?label={tracking}</code></td><td>igual</td><td>igual</td></tr></table>
+<blockquote><strong>Nota:</strong> Shipping y Queries cambian con <code>ENVIA_ENVIRONMENT</code>. OAuth/eshop solo cambian con <code>ENVIA_OAUTH_<em></code> / <code>ENVIA_ESHOP_</em></code> (Compose las setea).</blockquote>
+<blockquote><strong>Nota:</strong> El registro OAuth <strong>siempre</strong> manda <code>sandbox=false</code>. El switch de ambiente no voltea ese flag.</blockquote>
+<blockquote><strong>Nota:</strong> Compose production usa <code>api.envia.com</code>. Sin env vars el código cae a <code>api-clients.envia.com</code>. Al reproducir, usar los valores de Compose.</blockquote>
+<blockquote><strong>Nota:</strong> El path de checkout es el mismo en ambos ambientes: <code>v2/checkout/odoo/{shop_id}</code>. El path de package-dimensions trae <code>/test/</code> por default (<code>package/dimensions/test/{shop_id}</code>). Override: <code>ENVIA_PACKAGE_DIMENSIONS_PATH</code>.</blockquote>
+<h3>Variables de entorno</h3>
+<table><tr><th>Variable</th><th>Para qué</th></tr><tr><td><code>ENVIA_ENVIRONMENT</code></td><td><code>sandbox</code> o <code>production</code></td></tr><tr><td><code>ENVIA_API_BASE_URL</code></td><td>Host Shipping API</td></tr><tr><td><code>ENVIA_QUERIES_BASE_URL</code></td><td>Host Queries</td></tr><tr><td><code>ENVIA_CHECKOUT_PATH</code></td><td>Template de checkout (<code>{shop_id}</code>)</td></tr><tr><td><code>ENVIA_ECOMMERCE_PRIVATE_BASE_URL</code></td><td>Host de <code>label/create</code> y preview de paquetes</td></tr><tr><td><code>ENVIA_PACKAGE_DIMENSIONS_PATH</code></td><td>Template del preview de paquetes</td></tr><tr><td><code>ENVIA_OAUTH_INTEGRATION_URL</code></td><td>POST registrar tienda</td></tr><tr><td><code>ENVIA_OAUTH_POPUP_URL</code></td><td>Popup OAuth en el browser</td></tr><tr><td><code>ENVIA_ESHOP_TEST_URL</code></td><td>GET verificar integración</td></tr><tr><td><code>ENVIA_ESHOP_ACCESSES_ME_URL</code></td><td>GET access de la tienda / shipping token</td></tr><tr><td><code>ENVIA_EMBED_BASE_URL</code></td><td>Override opcional del iframe</td></tr></table>
+<p>Para pasar Docker de sandbox a production:</p>
+<ul><li>Cambiar el merge anchor en <code>docker-compose.yml</code> de <code><em>envia-dev</code> a <code></em>envia-prod</code>.</li><li>Reiniciar Odoo.</li></ul>
+<h2>Autenticación</h2>
+<p>Hay <strong>dos secretos distintos</strong>. No mezclarlos.</p>
+<h3>API key de Odoo (inbound + registro OAuth)</h3>
+<p>La genera el wizard Connect (<code>res.users.apikeys</code>, scope <code>rpc</code>). Se manda a Envia como <code>apiKey</code> para que Envia pueda llamar de vuelta a Odoo.</p>
+<ul><li>Body del registro OAuth: campo form <code>apiKey</code>.</li><li>Envia → Odoo: header <code>Authorization: Bearer &lt;odoo_api_key&gt;</code> y/o JSON <code>apiKey</code>.</li></ul>
+<h3>OAuth access token (solo eshop)</h3>
+<p>Lo devuelve <code>POST …/integration/odoo</code>. Se usa <strong>solo</strong> para verify/access de eshop.</p>
+<pre><code>Authorization: &lt;oauth_jwt&gt;</code></pre>
+<blockquote><strong>Nota:</strong> En este plugin <strong>no</strong> lleva prefijo <code>Bearer </code>. Es distinto del token de shipping.</blockquote>
+<h3>Shipping API token (Shipping / Queries / Ecommerce private)</h3>
+<p>Se guarda en <code>res.company.envia_api_token</code>. Viene del campo <code>hash</code> del callback, o de eshop <code>/accesses/me</code>.</p>
+<pre><code>Authorization: Bearer &lt;shipping_api_token&gt;
+Content-Type: application/json</code></pre>
+<p>Público (sin auth):</p>
+<ul><li>Queries <code>generic-form</code>, <code>state</code>, <code>provinces</code>.</li><li>Geocodes zipcode.</li><li>Iframe Ecommerce.</li><li>Página de tracking.</li></ul>
+<h2>Flujos end-to-end</h2>
+<h3>Flow A — Conectar la tienda (OAuth)</h3>
+<p>Este es el handshake que otro plugin debe copiar.</p>
+<ul><li>El admin genera la API key de Odoo y da click en Connect.</li><li>Odoo persiste la API key y hace commit de la DB.</li><li>Odoo llama <code>POST /oauth/{client}/integration/odoo</code>.</li><li>OAuth responde con <code>access_token</code> (JWT).</li><li>Odoo abre el popup de autorización.</li><li>El admin inicia sesión y autoriza la tienda.</li><li>Envia valida la tienda con JSON-RPC o XML-RPC <code>authenticate</code>.</li><li>Envia notifica <code>POST /envia/integration/callback</code> (o <code>/connect</code>).</li><li>Odoo guarda <code>envia_api_token</code>, <code>envia_shop_id</code>, <code>envia_company_id</code>.</li><li>Fallback si Envia no manda callback: <code>GET /api/v2/test</code> y <code>GET /accesses/me</code> con el JWT crudo.</li></ul>
+<table><tr><th>Paso</th><th>De</th><th>A</th><th>Qué ocurre</th></tr><tr><td>1</td><td>Admin</td><td>Odoo</td><td>Genera API key y Connect</td></tr><tr><td>2</td><td>Odoo</td><td>Odoo</td><td>Persiste API key y commit</td></tr><tr><td>3</td><td>Odoo</td><td>OAuth / eCart</td><td>POST integration/odoo</td></tr><tr><td>4</td><td>OAuth / eCart</td><td>Odoo</td><td>Devuelve access_token JWT</td></tr><tr><td>5</td><td>Odoo</td><td>Admin</td><td>Abre popup de autorización</td></tr><tr><td>6</td><td>Admin</td><td>OAuth / eCart</td><td>Login y autoriza la tienda</td></tr><tr><td>7</td><td>OAuth / eCart</td><td>Odoo</td><td>POST /jsonrpc o /xmlrpc/2/common authenticate</td></tr><tr><td>8</td><td>OAuth / eCart</td><td>Odoo</td><td>POST /envia/integration/callback</td></tr><tr><td>9</td><td>Odoo</td><td>Odoo</td><td>Guarda hash, shop, company, user</td></tr><tr><td>10</td><td>Odoo</td><td>Eshop</td><td>Fallback: GET /api/v2/test y /accesses/me</td></tr></table>
+<p>Registro OAuth (form-urlencoded):</p>
+<pre><code>POST /oauth/{client}/integration/odoo
+Content-Type: application/x-www-form-urlencoded
+
+url={store_url}&amp;database={db}&amp;email={email}&amp;apiKey={odoo_api_key}&amp;sandbox=false&amp;callbackUrl={callback}&amp;version={plugin_version}</code></pre>
+<p>Popup (browser):</p>
+<pre><code>GET /{client}?ecommerce=odoo&amp;url={store_url}&amp;database={db}&amp;email={email}&amp;apiKey={odoo_api_key}&amp;company={company_id}&amp;user={user_id}&amp;state=fromPlugin&amp;origin=envia_odoo</code></pre>
+<h4>Qué persistir al éxito</h4>
+<table><tr><th>Campo</th><th>Origen</th><th>Uso después</th></tr><tr><td><code>envia_api_token</code></td><td>callback <code>hash</code> (o eshop access)</td><td>Bearer de Shipping / Queries / Ecommerce private</td></tr><tr><td><code>envia_shop_id</code></td><td>callback <code>shop</code></td><td>Segmento de path en checkout, labels, addresses</td></tr><tr><td><code>envia_company_id</code></td><td>callback <code>company</code></td><td>Hash del iframe Ecommerce</td></tr><tr><td><code>envia_user_id</code></td><td>callback <code>user</code></td><td>Auditoría / cuenta Envia</td></tr><tr><td>Store URL</td><td><code>web.base.url</code></td><td>Debe ser HTTPS y alcanzable por Envia</td></tr></table>
+<h4>Body del callback que Envia pega a Odoo</h4>
+<pre><code>{
+  &quot;status&quot;: &quot;success&quot;,
+  &quot;hash&quot;: &quot;&lt;shipping_api_token&gt;&quot;,
+  &quot;shop&quot;: &quot;34084&quot;,
+  &quot;company&quot;: 12345,
+  &quot;user&quot;: 67890,
+  &quot;apiKey&quot;: &quot;&lt;odoo_rpc_api_key&gt;&quot;,
+  &quot;database&quot;: &quot;odoo&quot;
+}</code></pre>
+<blockquote><strong>Nota:</strong> <code>hash</code> es el token de <strong>shipping</strong>, no el JWT de OAuth. Status de éxito aceptados: <code>active</code>, <code>success</code>, <code>ok</code>, <code>connected</code>.</blockquote>
+<h4>URLs inbound que Envia debe alcanzar</h4>
+<table><tr><th>Method</th><th>Path</th><th>Purpose</th></tr><tr><td>POST</td><td><code>{web.base.url}/envia/integration/callback?db={dbname}</code></td><td>Guardar token + shop después del OAuth</td></tr><tr><td>POST</td><td><code>{web.base.url}/envia/integration/connect?db={dbname}</code></td><td>Handshake alterno (mismo payload)</td></tr><tr><td>POST</td><td><code>{web.base.url}/jsonrpc</code></td><td><code>common.authenticate</code> con <code>[db, email, apiKey]</code></td></tr><tr><td>POST</td><td><code>{web.base.url}/xmlrpc/2/common</code></td><td><code>version</code> / <code>authenticate</code></td></tr><tr><td>POST</td><td><code>{web.base.url}/xmlrpc/2/object</code></td><td><code>execute_kw</code> (Envia lee/escribe orders y pickings al crear la guía)</td></tr></table>
+<blockquote><strong>Nota:</strong> <code>web.base.url</code> tiene que ser HTTPS público (túnel en Docker local). Si Envia no llega a estas rutas, el popup parece exitoso pero la tienda nunca recibe shipping token.</blockquote>
+<h3>Flow B — Dirección de origen (warehouse)</h3>
+<p>Las tarifas salen mejor si el origin es un address id de Envia, no una calle cruda.</p>
+<ul><li><strong>Schema (público):</strong> <code>GET {queries}/generic-form?country_code=MX&amp;form=address_info</code> — arma el form de dirección.</li><li><strong>Estados / ciudades (público):</strong> <code>GET {queries}/state?country_code=MX</code> y <code>GET {queries}/provinces/{state_code}</code>.</li><li><strong>Zip → city/state (público):</strong> <code>GET https://geocodes.envia.com/zipcode/{country}/{zip}</code>.</li><li><strong>Crear address (Bearer):</strong> <code>POST {queries}/user-address</code> — incluir <code>shop_id</code> y <code>location_iden</code> (id interno del warehouse como string).</li><li><strong>Ligar como default del shop (Bearer):</strong> <code>POST {queries}/shop-default-address/{shop_id}</code> con <code>{&quot;address_id&quot;: &quot;...&quot;}</code>.</li><li><strong>Listar después:</strong> <code>GET {queries}/shop-default-address/{shop_id}</code>.</li></ul>
+<table style="width:auto;border-collapse:separate;border-spacing:4px"><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">generic-form / state / provinces</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Geocodes zipcode</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">POST /user-address</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">POST /shop-default-address/{shop_id}</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">GET /shop-default-address/{shop_id}</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Checkout origin: address_id</td></tr></table>
+<p>Después de esto, el origin del checkout queda:</p>
+<pre><code>{ &quot;address_id&quot;: &quot;3834910&quot; }</code></pre>
+<h3>Flow C — Cotizar tarifas (checkout)</h3>
+<p>Lo usan: <strong>Add shipping</strong> en la sale order, wizard de quote, checkout web Ship.</p>
+<pre><code>POST {api}/v2/checkout/odoo/{shop_id}
+Authorization: Bearer {shipping_api_token}
+Content-Type: application/json</code></pre>
+<ul><li>El origin puede ser <code>{&quot;address_id&quot;: &quot;...&quot;}</code> si el Flow B ya corrió.</li><li>El destination es un address completo.</li><li>Pickup (ocurre) agrega <code>destination.branchCode</code>.</li><li>Odoo no manda dimensiones de paquete (todo <code>null</code>); Envia las calcula del catálogo / <code>productId</code>.</li><li>Respuesta típica: lista de servicios con precio, días y <code>dropOff</code> (<code>0</code> = domicilio, <code>1</code>/<code>2</code> = pickup). El UI filtra por ruta.</li></ul>
+<table><tr><th>Paso</th><th>De</th><th>A</th><th>Qué ocurre</th></tr><tr><td>1</td><td>UI</td><td>Odoo</td><td>Add shipping / checkout</td></tr><tr><td>2</td><td>Odoo</td><td>Shipping API</td><td>POST checkout con origin.address_id</td></tr><tr><td>3</td><td>Odoo</td><td>Queries</td><td>Pickup: GET branches</td></tr><tr><td>4</td><td>Queries</td><td>Odoo</td><td>branchCode</td></tr><tr><td>5</td><td>Odoo</td><td>Shipping API</td><td>Checkout con destination.branchCode</td></tr><tr><td>6</td><td>Shipping API</td><td>Odoo</td><td>rates + dropOff</td></tr><tr><td>7</td><td>Odoo</td><td>UI</td><td>Servicios filtrados</td></tr></table>
+<p><strong>Test connection</strong> (Settings):</p>
+<pre><code>GET {queries}/carrier?country_code=MX
+Authorization: Bearer {shipping_api_token}</code></pre>
+<blockquote><strong>Nota:</strong> Confirma el shipping token, no el OAuth.</blockquote>
+<h3>Flow D — Crear guía (recomendado)</h3>
+<p>Lo usan: <strong>Generate Envia Label</strong> en el picking / Core <code>envia_send_shipping</code>.</p>
+<pre><code>POST {ecommerce_private}/label/create/{shop_id}
+Authorization: Bearer {shipping_api_token}
+Content-Type: application/json
+
+{&quot;id&quot;: &quot;&lt;odoo sale.order database id&gt;&quot;, &quot;service_id&quot;: 442}</code></pre>
+<blockquote><strong>Nota:</strong> Body: <code>id</code> (sale.order) + <code>service_id</code> (id numérico de la tarifa Envia).</blockquote>
+<p>Envia luego lee la orden por XML-RPC (tarifa elegida, addresses, líneas) y responde <code>data.labels[]</code> con <code>trackingNumber</code>, URL de <code>label</code>, <code>shipmentId</code>, <code>orderId</code>. Persistir:</p>
+<ul><li><code>shipmentId</code> → unlink/cancel después.</li><li><code>orderId</code> → id de orden <strong>ecommerce de Envia</strong> (no el id de Odoo) para el DELETE de <code>order-shipments</code>.</li><li>URL del PDF → bajar con GET plano (sin auth).</li></ul>
+<table><tr><th>Paso</th><th>De</th><th>A</th><th>Qué ocurre</th></tr><tr><td>1</td><td>stock.picking</td><td>Odoo</td><td>Generate Envia Label</td></tr><tr><td>2</td><td>Odoo</td><td>Ecommerce private</td><td>POST label/create con id de sale.order y service_id</td></tr><tr><td>3</td><td>Ecommerce private</td><td>XML-RPC</td><td>execute_kw lee la orden</td></tr><tr><td>4</td><td>XML-RPC</td><td>Ecommerce private</td><td>rate, addresses, lines</td></tr><tr><td>5</td><td>Ecommerce private</td><td>Odoo</td><td>labels[] tracking, PDF, shipmentId, orderId</td></tr><tr><td>6</td><td>Odoo</td><td>Odoo</td><td>Persiste tracking y Envia orderId</td></tr></table>
+<blockquote><strong>Nota:</strong> Envia debe conservar acceso XML-RPC después del Connect. Si <code>/xmlrpc/2/object</code> está bloqueado, crear guía falla o se cuelga.</blockquote>
+<h3>Flow E — Reemplazar guía</h3>
+<p>Desligar el fulfillment de Envia y volver a crear la etiqueta (Flow D):</p>
+<pre><code>DELETE {queries}/orders/{shop_id}/{envia_order_id}/fulfillment/order-shipments
+Authorization: Bearer {shipping_api_token}
+Content-Type: application/json
+
+{&quot;shipment_id&quot;: 40772217}</code></pre>
+<blockquote><strong>Nota:</strong> <code>envia_order_id</code> es el <code>orderId</code> de <code>label/create</code>, <strong>no</strong> el id de <code>sale.order</code>.</blockquote>
+<table style="width:auto;border-collapse:separate;border-spacing:4px"><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Guía existente</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">DELETE order-shipments</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">POST label/create</td></tr><tr><td style="text-align:center;vertical-align:middle;border:none;font-size:18px;width:28px">↓</td></tr><tr><td style="background:#eae6ff;border:1px solid #8777d9;border-radius:6px;padding:8px 10px;text-align:center;font-weight:600">Nueva guía</td></tr></table>
+<h3>Flow F — Sucursales pickup (website + wizard)</h3>
+<p>Cuando el checkout no trae opciones de pickup:</p>
+<pre><code>GET {queries}/branches/{carrier}/{country}?type=1&amp;zipcode=64000&amp;allBranch=false
+Authorization: Bearer {shipping_api_token}</code></pre>
+<ul><li><code>type=1</code> delivery / <code>type=2</code> pickup. Odoo usa ambos.</li><li>Después se vuelve a cotizar checkout con <code>destination.branchCode</code>.</li></ul>
+<p>JSON-RPC de website (solo Odoo, no Envia):</p>
+<ul><li><code>POST /shop/envia/delivery/options</code> — listar Ship o Pickup.</li><li><code>POST /shop/envia/delivery/select</code> — aplicar la tarifa al cart.</li></ul>
+<p>Esos dos llaman internamente al Flow C.</p>
+<h3>Flow G — Iframe del dashboard</h3>
+<p>Production:</p>
+<pre><code>GET https://shipping.envia.com/ecommerce?hash={base64(store_url:company_id:shop_id)}</code></pre>
+<p>Sandbox:</p>
+<pre><code>GET https://shipping-test.envia.com/ecommerce?hash={base64(store_url:company_id:shop_id)}</code></pre>
+<blockquote><strong>Nota:</strong> Nunca poner el API token en la URL del iframe. Solo hash.</blockquote>
+<h2>Catálogo de endpoints</h2>
+<p>Hosts <code>{api}</code>, <code>{queries}</code>, <code>{ecommerce}</code> = sección Ambientes.</p>
+<h3>OAuth / Eshop</h3>
+<table><tr><th>#</th><th>Method</th><th>URL</th><th>Auth</th><th>Cuándo</th><th>Cómo</th></tr><tr><td>1</td><td>POST</td><td><code>{oauth}/oauth/{client}/integration/odoo</code></td><td>none</td><td>Connect, antes del popup</td><td><code>application/x-www-form-urlencoded</code>: <code>url</code>, <code>database</code>, <code>email</code>, <code>apiKey</code>, <code>sandbox=false</code>, <code>callbackUrl</code>, <code>version</code>. Devuelve JWT OAuth.</td></tr><tr><td>2</td><td>GET</td><td><code>{oauth}/{client}?ecommerce=odoo&amp;url&amp;database&amp;email&amp;apiKey&amp;company&amp;user&amp;state=fromPlugin&amp;origin=envia_odoo</code></td><td>none (browser)</td><td>El usuario autoriza la tienda</td><td>Popup / pestaña nueva. El client id es del plugin (Compose vs Apps).</td></tr><tr><td>3</td><td>GET</td><td><code>{eshop}/api/v2/test</code></td><td>JWT crudo</td><td>Verify fallback</td><td>Esperar <code>{&quot;success&quot;: true}</code></td></tr><tr><td>4</td><td>GET</td><td><code>{eshop}/accesses/me</code></td><td>JWT crudo</td><td>Token/shop fallback</td><td>Extraer <code>shipping_api_token</code> / shop id / versión del plugin.</td></tr></table>
+<h3>Shipping API (<code>{api}</code>)</h3>
+<table><tr><th>#</th><th>Method</th><th>Path</th><th>Auth</th><th>Cuándo</th><th>Cómo</th></tr><tr><td>5</td><td>POST</td><td><code>/v2/checkout/odoo/{shop_id}</code></td><td>Bearer shipping</td><td>Cotizar</td><td>JSON origin, destination, items, package, currency, locale. Origin puede ser <code>address_id</code>. Pickup: <code>destination.branchCode</code>.</td></tr></table>
+<h3>Queries API (<code>{queries}</code>)</h3>
+<table><tr><th>#</th><th>Method</th><th>Path</th><th>Auth</th><th>Cuándo</th><th>Cómo</th></tr><tr><td>7</td><td>GET</td><td><code>/carrier?country_code=XX</code></td><td>Bearer</td><td>Test connection</td><td>Valida el shipping token.</td></tr><tr><td>8</td><td>GET</td><td><code>/branches/{carrier}/{country}</code></td><td>Bearer</td><td>Búsqueda pickup</td><td>Query: <code>type</code>, <code>zipcode</code>, <code>allBranch</code>, opcional <code>locality</code>, <code>state</code>.</td></tr><tr><td>9</td><td>GET</td><td><code>/generic-form?country_code=XX&amp;form=address_info</code></td><td>none</td><td>Schema del form de address</td><td>Campos por país para el wizard de origen.</td></tr><tr><td>10</td><td>GET</td><td><code>/state?country_code=XX</code></td><td>none</td><td>Dropdown de estados</td><td>Códigos de 2 letras de Envia.</td></tr><tr><td>11</td><td>GET</td><td><code>/provinces/{state_code}</code></td><td>none</td><td>Dropdown de ciudades</td><td>Ciudades de un estado.</td></tr><tr><td>12</td><td>POST</td><td><code>/user-address</code></td><td>Bearer</td><td>Crear origin</td><td>Ver payload abajo.</td></tr><tr><td>13</td><td>GET</td><td><code>/shop-default-address/{shop_id}</code></td><td>Bearer</td><td>Listar origins</td><td>Normalizar <code>id</code> / <code>address</code> anidado.</td></tr><tr><td>14</td><td>POST</td><td><code>/shop-default-address/{shop_id}</code></td><td>Bearer</td><td>Ligar origin</td><td><code>{&quot;address_id&quot;: &quot;...&quot;}</code></td></tr><tr><td>15</td><td>DELETE</td><td><code>/orders/{shop_id}/{envia_order_id}/fulfillment/order-shipments</code></td><td>Bearer</td><td>Reemplazar guía</td><td>Body <code>{&quot;shipment_id&quot;: N}</code></td></tr></table>
+<h4>POST /user-address (mínimo que manda Odoo)</h4>
+<pre><code>{
+  &quot;name&quot;: &quot;Warehouse&quot;,
+  &quot;company&quot;: &quot;Warehouse&quot;,
+  &quot;phone&quot;: &quot;8121211454&quot;,
+  &quot;phone_code&quot;: &quot;MX&quot;,
+  &quot;email&quot;: &quot;wh@example.com&quot;,
+  &quot;country&quot;: &quot;MX&quot;,
+  &quot;district&quot;: &quot;Centro&quot;,
+  &quot;postal_code&quot;: &quot;64000&quot;,
+  &quot;street&quot;: &quot;Aurora boreal&quot;,
+  &quot;number&quot;: &quot;201&quot;,
+  &quot;city&quot;: &quot;Monterrey&quot;,
+  &quot;state&quot;: &quot;NL&quot;,
+  &quot;category_id&quot;: 1,
+  &quot;type&quot;: 1,
+  &quot;shop_id&quot;: 34084,
+  &quot;location_iden&quot;: &quot;8&quot;
+}</code></pre>
+<blockquote><strong>Nota:</strong> <code>location_iden</code> es el id interno de la location de la tienda, como <strong>string</strong>.</blockquote>
+<h3>Ecommerce private (<code>{ecommerce}</code>)</h3>
+<table><tr><th>#</th><th>Method</th><th>Path</th><th>Auth</th><th>Cuándo</th><th>Cómo</th></tr><tr><td>16</td><td>POST</td><td><code>/package/dimensions/test/{shop_id}</code></td><td>Bearer</td><td>Preview en el UI de quote</td><td><code>{&quot;items&quot;:[{&quot;productId&quot;,&quot;variantId&quot;,&quot;name&quot;,&quot;quantity&quot;}],&quot;currency&quot;}</code>. Soft-fail si está caído.</td></tr><tr><td>17</td><td>POST</td><td><code>/label/create/{shop_id}</code></td><td>Bearer</td><td>Generar guía</td><td><code>{&quot;id&quot;:&quot;&lt;sale.order id&gt;&quot;,&quot;service_id&quot;:&lt;envia service id&gt;}</code></td></tr></table>
+<h3>Público / browser</h3>
+<table><tr><th>#</th><th>Method</th><th>URL</th><th>Auth</th><th>Cuándo</th><th>Cómo</th></tr><tr><td>18</td><td>GET</td><td><code>https://geocodes.envia.com/zipcode/{country}/{zip}</code></td><td>none</td><td>Llenar city/state</td><td>Mismo host en sandbox y prod. 404 → vacío.</td></tr><tr><td>19</td><td>GET</td><td><code>{embed}?hash=…</code></td><td>none</td><td>Dashboard</td><td><code>hash = base64(store_url:company:shop)</code></td></tr><tr><td>20</td><td>GET</td><td><code>https://envia.com/rastreo?label={tracking}</code></td><td>none</td><td>Track</td><td>Core <code>envia_get_tracking_link</code></td></tr><tr><td>21</td><td>GET</td><td><code>{labelUrl from create}</code></td><td>none</td><td>Bajar PDF</td><td>URL CDN/S3 de la respuesta de create.</td></tr></table>
+<h3>Inbound en la tienda (hay que exponerlos)</h3>
+<table><tr><th>#</th><th>Method</th><th>Path</th><th>Auth</th><th>Quién llama</th><th>Cómo</th></tr><tr><td>22</td><td>POST</td><td><code>/envia/integration/callback</code></td><td>Bearer API key Odoo</td><td>Envia después del OAuth</td><td>JSON del Flow A. Persistir token + shop.</td></tr><tr><td>23</td><td>POST</td><td><code>/envia/integration/connect</code></td><td>Bearer API key Odoo</td><td>Handshake Envia</td><td>Mismo payload que el callback.</td></tr><tr><td>24</td><td>POST</td><td><code>/jsonrpc</code></td><td>args en el body</td><td>Validación de tienda</td><td><code>method=call</code>, <code>service=common</code>, <code>method=authenticate</code>, <code>args=[db, email, apiKey]</code></td></tr><tr><td>25</td><td>POST</td><td><code>/xmlrpc/2/common</code></td><td>XML-RPC</td><td>Envia</td><td><code>version</code>, <code>authenticate</code></td></tr><tr><td>26</td><td>POST</td><td><code>/xmlrpc/2/object</code></td><td>XML-RPC</td><td>Envia al crear guías</td><td>Proxy <code>execute_kw</code> hacia la tienda.</td></tr></table>
+<h2>Payload de checkout (quote)</h2>
+<pre><code>{
+  &quot;origin&quot;: { &quot;address_id&quot;: &quot;3834910&quot; },
+  &quot;destination&quot;: {
+    &quot;name&quot;: &quot;Customer&quot;,
+    &quot;company&quot;: &quot;Customer&quot;,
+    &quot;email&quot;: &quot;customer@example.com&quot;,
+    &quot;phone&quot;: &quot;8181111111&quot;,
+    &quot;street&quot;: &quot;Calle Aurora&quot;,
+    &quot;number&quot;: &quot;201&quot;,
+    &quot;district&quot;: &quot;Centro&quot;,
+    &quot;city&quot;: &quot;Monterrey&quot;,
+    &quot;state&quot;: &quot;NL&quot;,
+    &quot;country&quot;: &quot;MX&quot;,
+    &quot;postalCode&quot;: &quot;64000&quot;
+  },
+  &quot;items&quot;: [
+    {
+      &quot;quantity&quot;: &quot;1&quot;,
+      &quot;width&quot;: null,
+      &quot;height&quot;: null,
+      &quot;length&quot;: null,
+      &quot;weight&quot;: &quot;1.00&quot;,
+      &quot;price&quot;: &quot;100.00&quot;,
+      &quot;requiresShipping&quot;: &quot;true&quot;,
+      &quot;productId&quot;: &quot;82&quot;,
+      &quot;variantId&quot;: null
+    }
+  ],
+  &quot;package&quot;: {
+    &quot;content&quot;: &quot;Merchandise&quot;,
+    &quot;amount&quot;: &quot;1&quot;,
+    &quot;type&quot;: &quot;box&quot;,
+    &quot;dimensions&quot;: { &quot;length&quot;: null, &quot;width&quot;: null, &quot;height&quot;: null },
+    &quot;weight&quot;: &quot;1.0&quot;,
+    &quot;lengthUnit&quot;: null,
+    &quot;weightUnit&quot;: &quot;KG&quot;,
+    &quot;insurance&quot;: &quot;0&quot;,
+    &quot;declaredValue&quot;: &quot;100.00&quot;
+  },
+  &quot;currency&quot;: &quot;MXN&quot;,
+  &quot;locale&quot;: &quot;es&quot;
+}</code></pre>
+<blockquote><strong>Nota:</strong> Mapeo de estados MX en este plugin: Odoo <code>CMX</code> / <code>DIF</code> / <code>DF</code> → Envia <code>CX</code>; <code>NLE</code> / <code>NUE</code> → <code>NL</code>.</blockquote>
+<h2>Orden recomendado (plugin nuevo)</h2>
+<ul><li>URL HTTPS pública de la tienda y API key RPC que la plataforma pueda validar.</li><li>OAuth register + popup + callback (Flow A). Persistir <code>hash</code> y <code>shop</code>.</li><li>Test <code>GET /carrier</code> con el shipping token.</li><li>Dirección de origen (Flow B) y guardar <code>address_id</code>.</li><li>Tarifas de checkout (Flow C) con <code>origin.address_id</code>.</li><li>Exponer XML-RPC / JSON-RPC para que Envia lea órdenes.</li><li><code>label/create</code> con el id de tu orden (Flow D).</li><li>Persistir <code>shipmentId</code> + <code>orderId</code> de Envia; implementar unlink antes de recrear.</li><li>Opcional: branches, preview de package-dimensions, iframe Ecommerce.</li></ul>
+<blockquote><strong>Nota:</strong> Un plugin ecommerce usa checkout con <code>shop_id</code> y <code>label/create</code>. No uses otros endpoints de guía.</blockquote>
+<h2>Errores que este plugin ya mapea</h2>
+<table><tr><th>HTTP / code</th><th>Significado</th></tr><tr><td>401 / 403 en Bearer shipping</td><td><code>envia_api_token</code> inválido (reconnect)</td></tr><tr><td>402</td><td>Saldo insuficiente en Envia</td></tr><tr><td><code>INVALID_POSTAL_CODE</code></td><td>Zip de origin/destination inválido</td></tr><tr><td><code>NO_RATES_AVAILABLE</code></td><td>No hay servicios para la ruta</td></tr><tr><td><code>WEIGHT_EXCEEDS_LIMIT</code></td><td>Paquete demasiado pesado</td></tr><tr><td>Checkout <code>meta=error</code> 1365</td><td>Habilitar Checkout y seleccionar paqueterías en Envia.com</td></tr><tr><td><code>label/create</code> HTTP 400</td><td>Payload inválido (falta <code>id</code> / <code>service_id</code>)</td></tr><tr><td>DELETE 403 con mensaje de negocio</td><td>Orden/shipment no encontrado — no es token inválido</td></tr></table>
+<h2>Mapa de código (referencia Odoo)</h2>
+<table><tr><th>Concern</th><th>File</th></tr><tr><td>Hosts / env switch</td><td><code>envia/services/envia_config.py</code></td></tr><tr><td>OAuth client</td><td><code>envia/services/envia_oauth_client.py</code></td></tr><tr><td>HTTP client</td><td><code>envia/services/envia_client.py</code></td></tr><tr><td>Checkout / labels / cancel</td><td><code>envia/services/envia_official_adapter.py</code></td></tr><tr><td>Connect wizard</td><td><code>envia/wizards/envia_plugin_connect_wizard.py</code></td></tr><tr><td>Callback apply</td><td><code>envia/services/envia_integration_callback.py</code></td></tr><tr><td>Nodb HTTP bridge</td><td><code>envia_http/controllers/integration.py</code></td></tr><tr><td>Website pickup</td><td><code>envia/services/website_pickup.py</code></td></tr><tr><td>Iframe hash</td><td><code>envia/const.py</code></td></tr></table>
+</body>
+</html>

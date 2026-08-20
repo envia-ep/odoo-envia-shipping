@@ -1,0 +1,411 @@
+{
+  "info": {
+    "_postman_id": "a8f3c2e1-ENVIA-ODOO-EXTERNAL-APIS",
+    "name": "Envia Odoo — External APIs",
+    "description": "External HTTP endpoints called by the Odoo Envia modules (`envia`, `envia_http`, `envia_ecommerce_embed`).\n\nSources: `envia/services/envia_client.py`, `envia_oauth_client.py`, `envia_official_adapter.py`, `envia_geocodes_client.py`, `envia_config.py`, `const.py`.\n\n**Auth**\n- Shipping / Queries / Ecommerce private: `Authorization: Bearer {{shipping_api_token}}`\n- OAuth eshop verify / accesses: raw `Authorization: {{oauth_access_token}}` (no Bearer prefix in code)\n- Public Queries helpers (generic-form, state, provinces) and Geocodes: no auth\n\n**Environments**\nCollection variables default to **sandbox**. To hit production, copy `*_production` values into `api_base_url` / `queries_base_url` / `embed_base_url`, or use the sibling Postman environment file.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "api_base_url", "value": "https://api-test.envia.com" },
+    { "key": "queries_base_url", "value": "https://queries.test.envia.com" },
+    { "key": "api_base_url_sandbox", "value": "https://api-test.envia.com" },
+    { "key": "queries_base_url_sandbox", "value": "https://queries.test.envia.com" },
+    { "key": "api_base_url_production", "value": "https://api-clients.envia.com" },
+    { "key": "queries_base_url_production", "value": "https://queries.envia.com" },
+    { "key": "ecommerce_private_base_url", "value": "https://YOUR-ECOMMERCE-PRIVATE-HOST" },
+    { "key": "geocodes_base_url", "value": "https://geocodes.envia.com" },
+    { "key": "oauth_integration_url", "value": "https://oauth.ecartapi.com/oauth/NrUAVHsfjTJUE0NacgA7mVSogkfTuWTW/integration/odoo" },
+    { "key": "oauth_popup_url", "value": "https://oauth.ecartapi.com/NrUAVHsfjTJUE0NacgA7mVSogkfTuWTW?ecommerce=odoo" },
+    { "key": "eshop_test_url", "value": "https://eshop-deve.herokuapp.com/api/v2/test" },
+    { "key": "eshop_accesses_me_url", "value": "https://eshop-deve.herokuapp.com/accesses/me" },
+    { "key": "embed_base_url", "value": "https://shipping-test.envia.com/ecommerce" },
+    { "key": "embed_base_url_sandbox", "value": "https://shipping-test.envia.com/ecommerce" },
+    { "key": "embed_base_url_production", "value": "https://shipping.envia.com/ecommerce" },
+    { "key": "tracking_url_template", "value": "https://envia.com/rastreo?label={{tracking_number}}" },
+    { "key": "shipping_api_token", "value": "" },
+    { "key": "oauth_access_token", "value": "" },
+    { "key": "shop_id", "value": "34084" },
+    { "key": "sale_order_id", "value": "1" },
+    { "key": "envia_service_id", "value": "442" },
+    { "key": "country_code", "value": "MX" },
+    { "key": "state_code", "value": "NL" },
+    { "key": "zipcode", "value": "64060" },
+    { "key": "carrier_code", "value": "estafeta" },
+    { "key": "address_id", "value": "3834910" },
+    { "key": "shipment_id", "value": "40772217" },
+    { "key": "tracking_number", "value": "1Z999" },
+    { "key": "odoo_base_url", "value": "https://odoo.example.com" },
+    { "key": "odoo_database", "value": "odoo" },
+    { "key": "odoo_email", "value": "admin@example.com" },
+    { "key": "odoo_api_key", "value": "" },
+    { "key": "callback_url", "value": "https://odoo.example.com/envia/integration/callback" },
+    { "key": "plugin_version", "value": "19.0.1.0.6" },
+    { "key": "embed_hash", "value": "" },
+    { "key": "checkout_path", "value": "v2/checkout/odoo/{{shop_id}}" },
+    { "key": "package_dimensions_path", "value": "package/dimensions/test/{{shop_id}}" },
+    { "key": "label_create_path", "value": "label/create/{{shop_id}}" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{shipping_api_token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "1. OAuth / Eshop",
+      "description": "Plugin connect flow (`envia_oauth_client.py`). OAuth registration uses form-urlencoded; eshop verify/access do **not** prefix Bearer.",
+      "item": [
+        {
+          "name": "POST Register Odoo integration",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "url", "value": "{{odoo_base_url}}" },
+                { "key": "database", "value": "{{odoo_database}}" },
+                { "key": "email", "value": "{{odoo_email}}" },
+                { "key": "apiKey", "value": "{{odoo_api_key}}" },
+                { "key": "sandbox", "value": "false" },
+                { "key": "callbackUrl", "value": "{{callback_url}}" },
+                { "key": "version", "value": "{{plugin_version}}" }
+              ]
+            },
+            "url": "{{oauth_integration_url}}",
+            "description": "`EnviaOauthClient.register_odoo_integration` → returns OAuth access token.\n\nDefault: `https://oauth.ecartapi.com/oauth/.../integration/odoo`"
+          }
+        },
+        {
+          "name": "GET OAuth popup (browser)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{oauth_popup_url}}&url={{odoo_base_url}}&database={{odoo_database}}&email={{odoo_email}}&apiKey={{odoo_api_key}}&company=1&user=2&state=fromPlugin&origin=envia_odoo",
+              "host": ["{{oauth_popup_url}}"],
+              "query": [
+                { "key": "url", "value": "{{odoo_base_url}}" },
+                { "key": "database", "value": "{{odoo_database}}" },
+                { "key": "email", "value": "{{odoo_email}}" },
+                { "key": "apiKey", "value": "{{odoo_api_key}}" },
+                { "key": "company", "value": "1" },
+                { "key": "user", "value": "2" },
+                { "key": "state", "value": "fromPlugin" },
+                { "key": "origin", "value": "envia_odoo" }
+              ]
+            },
+            "description": "`build_integration_popup_url` — opened in a browser popup during Connect. Base already includes `?ecommerce=odoo`."
+          }
+        },
+        {
+          "name": "GET Verify integration (eshop /test)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "{{oauth_access_token}}" }
+            ],
+            "url": "{{eshop_test_url}}",
+            "description": "`EnviaOauthClient.verify_integration` — expects `{ \"success\": true }`.\n\nAuth header is the raw OAuth JWT (no `Bearer ` prefix)."
+          }
+        },
+        {
+          "name": "GET Store access (eshop /accesses/me)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "{{oauth_access_token}}" }
+            ],
+            "url": "{{eshop_accesses_me_url}}",
+            "description": "`EnviaOauthClient.fetch_store_access` — extracts `shipping_api_token`, shop/store id, plugin version.\n\nAuth header is the raw OAuth JWT (no `Bearer ` prefix)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Shipping API (api-*)",
+      "description": "Host from `get_envia_api_base_url`: sandbox `api-test.envia.com`, production `api-clients.envia.com`. Bearer = company `envia_api_token`.",
+      "item": [
+        {
+          "name": "POST Checkout rates (v2/checkout/odoo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": {\n    \"name\": \"Warehouse Origin\",\n    \"company\": \"My Company\",\n    \"email\": \"warehouse@example.com\",\n    \"phone\": \"8180000000\",\n    \"street\": \"Av Reforma\",\n    \"number\": \"222\",\n    \"district\": \"Juarez\",\n    \"city\": \"Ciudad de Mexico\",\n    \"state\": \"CX\",\n    \"country\": \"MX\",\n    \"postalCode\": \"06600\"\n  },\n  \"destination\": {\n    \"name\": \"Customer\",\n    \"company\": \"Customer\",\n    \"email\": \"customer@example.com\",\n    \"phone\": \"8181111111\",\n    \"street\": \"Calle Aurora\",\n    \"number\": \"201\",\n    \"district\": \"Centro\",\n    \"city\": \"Monterrey\",\n    \"state\": \"NL\",\n    \"country\": \"MX\",\n    \"postalCode\": \"64000\"\n  },\n  \"items\": [\n    {\n      \"quantity\": \"1\",\n      \"width\": null,\n      \"height\": null,\n      \"length\": null,\n      \"weight\": \"1.00\",\n      \"price\": \"100.00\",\n      \"requiresShipping\": \"true\",\n      \"productId\": \"82\",\n      \"variantId\": null\n    }\n  ],\n  \"package\": {\n    \"content\": \"Merchandise\",\n    \"amount\": \"1\",\n    \"type\": \"box\",\n    \"dimensions\": { \"length\": null, \"width\": null, \"height\": null },\n    \"weight\": \"1.0\",\n    \"lengthUnit\": null,\n    \"weightUnit\": \"KG\",\n    \"insurance\": \"0\",\n    \"declaredValue\": \"100.00\"\n  },\n  \"currency\": \"MXN\",\n  \"locale\": \"es\"\n}"
+            },
+            "url": "{{api_base_url}}/{{checkout_path}}",
+            "description": "`EnviaOfficialAdapter.quote` / website pickup → `POST {ENVIA_CHECKOUT_PATH}` default `v2/checkout/odoo/{shop_id}`.\n\nOrigin may be `{ \"address_id\": \"...\" }` when a shop default address is linked.\nDestination may include `branchCode` for Pickup (ocurre)."
+          }
+        },
+        {
+          "name": "POST Create label (legacy ship/generate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": {\n    \"name\": \"Warehouse Origin\",\n    \"company\": \"My Company\",\n    \"email\": \"warehouse@example.com\",\n    \"phone\": \"8180000000\",\n    \"street\": \"Av Reforma\",\n    \"number\": \"222\",\n    \"district\": \"Juarez\",\n    \"city\": \"Ciudad de Mexico\",\n    \"state\": \"CX\",\n    \"country\": \"MX\",\n    \"postalCode\": \"06600\"\n  },\n  \"destination\": {\n    \"name\": \"Customer\",\n    \"company\": \"Customer\",\n    \"email\": \"customer@example.com\",\n    \"phone\": \"8181111111\",\n    \"street\": \"Calle Aurora\",\n    \"number\": \"201\",\n    \"district\": \"Centro\",\n    \"city\": \"Monterrey\",\n    \"state\": \"NL\",\n    \"country\": \"MX\",\n    \"postalCode\": \"64000\"\n  },\n  \"packages\": [\n    {\n      \"type\": \"box\",\n      \"content\": \"Merchandise\",\n      \"amount\": 1,\n      \"declaredValue\": 100,\n      \"lengthUnit\": null,\n      \"weightUnit\": \"KG\",\n      \"weight\": 1.0,\n      \"dimensions\": { \"length\": null, \"width\": null, \"height\": null }\n    }\n  ],\n  \"shipment\": {\n    \"type\": 1,\n    \"carrier\": \"fedex\",\n    \"service\": \"1\"\n  },\n  \"settings\": {\n    \"currency\": \"MXN\",\n    \"comments\": \"SO001\",\n    \"printFormat\": \"PDF\",\n    \"printSize\": \"STOCK_4X6\"\n  }\n}"
+            },
+            "url": "{{api_base_url}}/ship/generate/",
+            "description": "`EnviaOfficialAdapter.create_shipment` — legacy Create Label wizard path (`envia_use_legacy_ship_generate`). Core Send to Shipper uses ecommerce `label/create` instead."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Queries API (queries-*)",
+      "description": "Host from `get_envia_queries_base_url`: sandbox `queries.test.envia.com`, production `queries.envia.com`.",
+      "item": [
+        {
+          "name": "GET Test connection (carrier)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{queries_base_url}}/carrier?country_code={{country_code}}",
+              "host": ["{{queries_base_url}}"],
+              "path": ["carrier"],
+              "query": [{ "key": "country_code", "value": "{{country_code}}" }]
+            },
+            "description": "`EnviaClient.test_connection` — validates shipping Bearer token."
+          }
+        },
+        {
+          "name": "GET Branches by carrier/country",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{queries_base_url}}/branches/{{carrier_code}}/{{country_code}}?type=1&zipcode={{zipcode}}&allBranch=false",
+              "host": ["{{queries_base_url}}"],
+              "path": ["branches", "{{carrier_code}}", "{{country_code}}"],
+              "query": [
+                { "key": "type", "value": "1", "description": "1=delivery, 2=pickup (project uses both)" },
+                { "key": "zipcode", "value": "{{zipcode}}" },
+                { "key": "allBranch", "value": "false" },
+                { "key": "locality", "value": "Monterrey", "disabled": true },
+                { "key": "state", "value": "{{state_code}}", "disabled": true }
+              ]
+            },
+            "description": "`EnviaClient.get_branches` — pickup branch search near postal code."
+          }
+        },
+        {
+          "name": "GET Generic form (address_info)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{queries_base_url}}/generic-form?country_code={{country_code}}&form=address_info",
+              "host": ["{{queries_base_url}}"],
+              "path": ["generic-form"],
+              "query": [
+                { "key": "country_code", "value": "{{country_code}}" },
+                { "key": "form", "value": "address_info" }
+              ]
+            },
+            "description": "`EnviaClient.get_generic_form` / billing wizard — public (no auth)."
+          }
+        },
+        {
+          "name": "GET States",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{queries_base_url}}/state?country_code={{country_code}}",
+              "host": ["{{queries_base_url}}"],
+              "path": ["state"],
+              "query": [{ "key": "country_code", "value": "{{country_code}}" }]
+            },
+            "description": "`EnviaClient.get_states` — public."
+          }
+        },
+        {
+          "name": "GET Provinces by state",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{queries_base_url}}/provinces/{{state_code}}",
+            "description": "`EnviaClient.get_provinces` — public. Billing wizard may also call schema geocode URLs."
+          }
+        },
+        {
+          "name": "POST Create user address",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ALMACEN PRUEBA\",\n  \"company\": \"ALMACEN PRUEBA\",\n  \"phone\": \"8121211454\",\n  \"phone_code\": \"MX\",\n  \"email\": \"wh@example.com\",\n  \"country\": \"MX\",\n  \"district\": \"Centro\",\n  \"postal_code\": \"64000\",\n  \"street\": \"Aurora boreal\",\n  \"number\": \"201\",\n  \"city\": \"Monterrey\",\n  \"state\": \"NL\",\n  \"category_id\": 1,\n  \"type\": 1,\n  \"shop_id\": {{shop_id}},\n  \"location_iden\": \"8\"\n}"
+            },
+            "url": "{{queries_base_url}}/user-address",
+            "description": "`EnviaClient.create_user_address` from billing/origin wizard. `location_iden` = Odoo `stock.location` id (string)."
+          }
+        },
+        {
+          "name": "GET Shop default addresses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{queries_base_url}}/shop-default-address/{{shop_id}}",
+            "description": "`EnviaClient.get_shop_default_addresses`."
+          }
+        },
+        {
+          "name": "POST Link shop default address",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address_id\": \"{{address_id}}\"\n}"
+            },
+            "url": "{{queries_base_url}}/shop-default-address/{{shop_id}}",
+            "description": "`EnviaClient.set_shop_default_address` — called after create user-address."
+          }
+        },
+        {
+          "name": "POST Bulk cancel shipments",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shipments\": [{{shipment_id}}]\n}"
+            },
+            "url": "{{queries_base_url}}/shipments/bulk/cancel",
+            "description": "`EnviaOfficialAdapter.cancel_shipments` (legacy bulk cancel). Prefer order-shipments DELETE when replacing a label from Odoo."
+          }
+        },
+        {
+          "name": "DELETE Unlink order shipment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shipment_id\": {{shipment_id}}\n}"
+            },
+            "url": "{{queries_base_url}}/orders/{{shop_id}}/{{envia_order_id}}/fulfillment/order-shipments",
+            "description": "`EnviaOfficialAdapter.unlink_order_shipment` / Replace Envia Label. Path: shop_id + Envia ``orderId`` from label/create (not Odoo sale.order id). Body: Envia shipment_id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Ecommerce private",
+      "description": "Host **only** from env `ENVIA_ECOMMERCE_PRIVATE_BASE_URL` (no code default). Bearer = same shipping API token.\n\nPaths:\n- `ENVIA_PACKAGE_DIMENSIONS_PATH` default `package/dimensions/test/{shop_id}`\n- label create fixed `label/create/{shop_id}`",
+      "item": [
+        {
+          "name": "POST Package dimensions preview",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"82\",\n      \"variantId\": null,\n      \"name\": \"Classic Leather Belt\",\n      \"quantity\": 1\n    }\n  ],\n  \"currency\": \"MXN\"\n}"
+            },
+            "url": "{{ecommerce_private_base_url}}/{{package_dimensions_path}}",
+            "description": "`EnviaOfficialAdapter.fetch_package_dimensions`."
+          }
+        },
+        {
+          "name": "POST Create label (label/create)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{sale_order_id}}\",\n  \"service_id\": {{envia_service_id}}\n}"
+            },
+            "url": "{{ecommerce_private_base_url}}/{{label_create_path}}",
+            "description": "`EnviaOfficialAdapter.create_label_for_odoo_order`. Body `id` = Odoo `sale.order` id (string), `service_id` = Envia numeric rate id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Geocodes (public)",
+      "item": [
+        {
+          "name": "GET Zipcode lookup",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{geocodes_base_url}}/zipcode/{{country_code}}/{{zipcode}}",
+            "description": "`EnviaGeocodesClient.lookup_zipcode` — resolves city/state from postal code. Always `https://geocodes.envia.com/`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Browser / public pages",
+      "description": "Not REST APIs for JSON clients — opened as iframe/link from Odoo.",
+      "item": [
+        {
+          "name": "GET Ecommerce embed (dashboard iframe)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{embed_base_url}}?hash={{embed_hash}}",
+              "host": ["{{embed_base_url}}"],
+              "query": [{ "key": "hash", "value": "{{embed_hash}}" }]
+            },
+            "description": "`build_envia_ecommerce_embed_url` / portable embed.\n- sandbox: `https://shipping-test.envia.com/ecommerce`\n- production: `https://shipping.envia.com/ecommerce`\n\nHash = base64(`store_url:company_id:shop_id`)."
+          }
+        },
+        {
+          "name": "GET Public tracking page",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "https://envia.com/rastreo?label={{tracking_number}}",
+            "description": "`ENVIA_PUBLIC_TRACKING_URL` / `delivery.carrier.envia_get_tracking_link`."
+          }
+        },
+        {
+          "name": "GET Download label PDF (dynamic URL)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "https://example.com/label.pdf",
+            "description": "`EnviaClient.get_binary(url)` — downloads whatever `label` / `labelUrl` the create endpoints return (S3/CDN). Replace URL with a real label URL from a create response."
+          }
+        }
+      ]
+    }
+  ]
+}

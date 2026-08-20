@@ -79,6 +79,10 @@ This package uses Envia.com **production** API hosts by default. Developers may
 override with `ENVIA_ENVIRONMENT=sandbox` and related `ENVIA_*` environment
 variables (see `docker-compose.yml`).
 
+Full endpoint catalog (sandbox vs production), auth, and copy-paste flows for a
+similar plugin: [`docs/ENVIA_API_INTEGRATION.md`](docs/ENVIA_API_INTEGRATION.md).
+Postman collection: [`docs/postman/`](docs/postman/).
+
 ## Usage
 
 1. Open a confirmed quotation / sales order.
