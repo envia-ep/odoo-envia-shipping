@@ -2004,7 +2004,9 @@ msgstr ""
 #. module: envia
 #. odoo-python
 #: code:addons/envia/services/envia_client.py:0
-msgid "Insufficient Envia account balance."
+msgid ""
+"Your Envia account does not have enough balance to create this label. Add "
+"funds at Envia.com and try again."
 msgstr ""
 
 #. module: envia

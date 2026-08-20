@@ -396,9 +396,11 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         if not isinstance(body, dict):
             raise UserError(_("Envia label/create returned an invalid response."))
         if not body.get("status"):
-            message = EnviaClient.humanize_api_message(
-                body.get("message") or body.get("error") or body
-            )
+            raw = body.get("message") or body.get("error") or body
+            message = EnviaClient.humanize_api_message(raw)
+            # Known API phrases become a full UX sentence — do not prefix.
+            if message != str(raw or "").strip():
+                raise UserError(message)
             raise UserError(_("Envia did not generate a label: %s") % message)
         data = body.get("data") or {}
         labels = data.get("labels") if isinstance(data, dict) else None
@@ -512,10 +514,11 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
     ) -> CreateShipmentResponse:
         data_list = body.get("data")
         if not isinstance(data_list, list) or not data_list:
-            message = EnviaClient.humanize_api_message(
-                body.get("message") or body.get("error") or body
-            )
+            raw = body.get("message") or body.get("error") or body
+            message = EnviaClient.humanize_api_message(raw)
             _logger.error("Envia ship/generate empty data: %s", body)
+            if message != str(raw or "").strip():
+                raise UserError(message)
             raise UserError(_("Envia did not generate a label: %s") % message)
 
         data = data_list[0]

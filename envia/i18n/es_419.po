@@ -2091,8 +2091,12 @@ msgstr "En tránsito"
 #. module: envia
 #. odoo-python
 #: code:addons/envia/services/envia_client.py:0
-msgid "Insufficient Envia account balance."
-msgstr "Saldo insuficiente en la cuenta de Envia."
+msgid ""
+"Your Envia account does not have enough balance to create this label. Add "
+"funds at Envia.com and try again."
+msgstr ""
+"Tu cuenta de Envia no tiene saldo suficiente para crear esta etiqueta. "
+"Agrega fondos en Envia.com e inténtalo de nuevo."
 
 #. module: envia
 #: model:ir.model.fields.selection,name:envia.selection__envia_plugin_connect_wizard__state__integrating

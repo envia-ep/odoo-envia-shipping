@@ -281,3 +281,17 @@ class TestEnviaClient(TransactionCase):
         self.assertIn("Label generation from the store", message)
         self.assertIn("Envia", message)
         self.assertNotIn("Feature not enabled", message)
+
+    def test_label_create_not_enough_money_asks_to_add_funds(self):
+        with self.assertRaises(UserError) as error:
+            EnviaOfficialAdapter._parse_label_create_response(
+                {
+                    "status": False,
+                    "message": "Not Enough money",
+                }
+            )
+        message = str(error.exception)
+        self.assertIn("enough balance", message.casefold())
+        self.assertIn("Envia.com", message)
+        self.assertNotIn("Not Enough money", message)
+        self.assertNotIn("did not generate a label", message.casefold())

@@ -80,7 +80,7 @@ class EnviaClient:
             )
 
         if response.status_code == 402:
-            raise UserError(_("Insufficient Envia account balance."))
+            raise UserError(EnviaClient.humanize_api_message("Not Enough money"))
 
         try:
             body = response.json()
@@ -123,9 +123,19 @@ class EnviaClient:
     @staticmethod
     def humanize_api_message(message) -> str:
         text = str(message or "").strip()
-        if "feature not enabled" in text.casefold():
+        folded = text.casefold()
+        if "feature not enabled" in folded:
             return _(
                 'Turn on "Label generation from the store" in Envia for this shop, then try again.'
+            )
+        if (
+            "not enough money" in folded
+            or "saldo insuficiente" in folded
+            or ("insufficient" in folded and "balance" in folded)
+        ):
+            return _(
+                "Your Envia account does not have enough balance to create this "
+                "label. Add funds at Envia.com and try again."
             )
         return text
 
