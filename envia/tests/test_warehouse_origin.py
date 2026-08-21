@@ -48,7 +48,7 @@ class TestEnviaWarehouseOrigin(TransactionCase):
             },
             text="{}",
         )
-        base = "https://queries-test.envia.com/"
+        base = "https://queries.test.envia.com/"
         client = EnviaClient(base, "shipping-token")
         addresses = client.get_shop_default_addresses("34107")
         self.assertEqual(addresses[0]["id"], "55")

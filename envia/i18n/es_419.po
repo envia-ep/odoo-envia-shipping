@@ -1198,6 +1198,29 @@ msgid "Enable label generation"
 msgstr "Habilitar generación de etiquetas"
 
 #. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/js/envia_enable_labels_field.js:0
+msgid "Enable labels in Envia"
+msgstr "Habilitar etiquetas en Envia"
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/js/envia_enable_labels_field.js:0
+msgid ""
+"This only shows the buttons in Odoo. Also turn on \"Label generation from the store\" in Envia for this shop."
+msgstr ""
+"Esto solo muestra los botones en Odoo. También habilite «Generación de etiquetas desde la tienda» en Envia para este shop."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Show Generate Envia Label on deliveries and Generate Label in the quote "
+"wizard."
+msgstr ""
+"Muestra Generar guía Envia en las entregas y Generar etiqueta en el "
+"asistente de cotización."
+
+#. module: envia
 #. odoo-python
 #: code:addons/envia/models/envia_quote.py:0
 msgid "Enable label generation in Settings > Envia.com before creating labels."
@@ -1595,6 +1618,14 @@ msgstr "Envia no generó una etiqueta: %s"
 #. odoo-python
 #: code:addons/envia/services/envia_client.py:0
 msgid ""
+"Turn on \"Label generation from the store\" in Envia for this shop, then try again."
+msgstr ""
+"Habilite «Generación de etiquetas desde la tienda» en Envia para este shop e intente de nuevo."
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_client.py:0
+msgid ""
 "Envia eshop quote endpoint was not found (HTTP 404). Refresh the OAuth "
 "connection or contact Envia support."
 msgstr ""
@@ -1885,6 +1916,11 @@ msgid "Generate API key"
 msgstr "Generar clave API"
 
 #. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid "Generate Envia Label"
+msgstr "Generar guía Envia"
+
+#. module: envia
 #. odoo-python
 #: code:addons/envia/models/envia_quote.py:0
 #: model_terms:ir.ui.view,arch_db:envia.view_envia_create_shipment_wizard_form
@@ -2055,8 +2091,12 @@ msgstr "En tránsito"
 #. module: envia
 #. odoo-python
 #: code:addons/envia/services/envia_client.py:0
-msgid "Insufficient Envia account balance."
-msgstr "Saldo insuficiente en la cuenta de Envia."
+msgid ""
+"Your Envia account does not have enough balance to create this label. Add "
+"funds at Envia.com and try again."
+msgstr ""
+"Tu cuenta de Envia no tiene saldo suficiente para crear esta etiqueta. "
+"Agrega fondos en Envia.com e inténtalo de nuevo."
 
 #. module: envia
 #: model:ir.model.fields.selection,name:envia.selection__envia_plugin_connect_wizard__state__integrating
@@ -2629,6 +2669,16 @@ msgstr ""
 #: code:addons/envia/services/envia_official_adapter.py:0
 msgid "No shipping services available for this route."
 msgstr "No hay servicios de envío disponibles para esta ruta."
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_official_adapter.py:0
+msgid ""
+"To get shipping quotes, enable Checkout in Envia.com "
+"and select the carriers you want to quote."
+msgstr ""
+"Para cotizar, habilita Checkout en Envia.com "
+"y selecciona las paqueterías con las que deseas cotizar."
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
@@ -3278,6 +3328,11 @@ msgid "Refresh token"
 msgstr "Actualizar token"
 
 #. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid "Replace Envia Label"
+msgstr "Reemplazar guía Envia"
+
+#. module: envia
 #: model:ir.model.fields,field_description:envia.field_envia_shipment__activity_user_id
 msgid "Responsible User"
 msgstr "Usuario responsable"
@@ -3670,10 +3725,12 @@ msgstr "Mostrar selector de sucursal de destino"
 #: model:ir.model.fields,help:envia.field_sale_order__envia_enable_labels
 #: model:ir.model.fields,help:envia.field_stock_picking__envia_enable_labels
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
-msgid "Show Generate Label actions on quotes, pickings, and the quote wizard."
+msgid ""
+"Show Generate / Replace Envia Label on deliveries, quotes, and the quote "
+"wizard."
 msgstr ""
-"Mostrar acciones de generar etiqueta en cotizaciones, albaranes y el "
-"asistente."
+"Muestra Generar / Reemplazar guía Envia en entregas, cotizaciones y el "
+"asistente de cotización."
 
 #. module: envia
 #: model:ir.model.fields,field_description:envia.field_choose_delivery_carrier__envia_show_origin_branch_picker
@@ -3930,6 +3987,15 @@ msgstr "Esta cotización expiró. Solicita una nueva cotización."
 #: code:addons/envia/models/envia_shipment.py:0
 msgid "This shipment has no tracking number."
 msgstr "Este envío no tiene número de rastreo."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.view_picking_form_envia
+msgid ""
+"This unlinks the current Envia label in Odoo (it does not cancel it on "
+"Envia). You will quote again and generate a new label. Continue?"
+msgstr ""
+"Esto desvincula la guía Envia actual en Odoo (no la cancela en Envia). "
+"Volverás a cotizar y generar una guía nueva. ¿Continuar?"
 
 #. module: envia
 #. odoo-python
@@ -4606,6 +4672,11 @@ msgstr "Habilitar recolección y entrega en sucursal"
 
 #. module: envia
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Enable branch pickup and delivery (backend)"
+msgstr "Habilitar recolección y entrega en sucursal (backend)"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
 msgid ""
 "Allow origin/destination branch (pickup and drop-off at carrier branches). "
 "When disabled, only home delivery routes are available."
@@ -4722,6 +4793,285 @@ msgstr "Plugin"
 #: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
 msgid "Shipping defaults"
 msgstr "Valores predeterminados de envío"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Backend only: sales orders and Add shipping. Does not change the ecommerce "
+"website checkout."
+msgstr ""
+"Solo backend: pedidos de venta y Añadir envío. No cambia el checkout del "
+"ecommerce."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Allow origin/destination branch routes when quoting from sales orders and "
+"the Envia quote wizard. Independent from ecommerce checkout Pickup."
+msgstr ""
+"Permite rutas con sucursal al cotizar desde pedidos de venta y el asistente "
+"de cotización Envia. Independiente del Pickup del checkout ecommerce."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ecommerce website checkout"
+msgstr "Checkout del ecommerce (sitio web)"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Online store only (website delivery step). Does not change quoting on sales "
+"orders or the Envia quote wizard."
+msgstr ""
+"Solo tienda en línea (paso de entrega del sitio web). No cambia la cotización "
+"en pedidos de venta ni el asistente de cotización Envia."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Enable pickup in ecommerce checkout"
+msgstr "Habilitar recolección en el checkout del ecommerce"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Show the Pickup tab on the website delivery step. Requires Website / "
+"ecommerce."
+msgstr ""
+"Muestra la pestaña Recolección en el paso de entrega del sitio web. Requiere "
+"Sitio web / ecommerce."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show pickup map in ecommerce"
+msgstr "Mostrar mapa de recolección en el ecommerce"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Display the map of nearby pickup locations on the website."
+msgstr "Muestra el mapa de los puntos de recolección cercanos en el sitio web."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Show only the Pickup map and hide the branch list on the website. Select a "
+"location from the map pins."
+msgstr ""
+"Muestra solo el mapa de recolección y oculta la lista de sucursales en el "
+"sitio web. Selecciona la ubicación desde los pines del mapa."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ecommerce checkout labels"
+msgstr "Etiquetas del checkout ecommerce"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Labels for the Ship and Pickup tabs on the website delivery step."
+msgstr ""
+"Etiquetas de las pestañas Envío y Recolección en el paso de entrega del "
+"sitio web."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Max pickup branches per carrier (ecommerce)"
+msgstr "Máximo de sucursales por transportista (ecommerce)"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Limit pickup branches on the website per Envia carrier code (e.g. "
+"paquetexpress). Closest first. Use 0 for no limit. Does not affect Ship "
+"rates or backend quoting."
+msgstr ""
+"Limita sucursales de recolección en el sitio web por código de "
+"transportista Envia (p. ej. paquetexpress). La más cercana primero. Usa 0 "
+"para sin límite. No afecta tarifas Ship ni la cotización backend."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Website checkout"
+msgstr "Checkout del sitio web"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ship / Pickup labels, map, and rate limits on the ecommerce delivery step."
+msgstr ""
+"Etiquetas Envío / Recolección, mapa y límite de tarifas en el paso de "
+"entrega del ecommerce."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Enable pickup in checkout"
+msgstr "Habilitar recolección en el checkout"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show the Pickup tab on the website delivery step."
+msgstr "Muestra la pestaña Recolección en el paso de entrega del sitio web."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show pickup map"
+msgstr "Mostrar mapa de recolección"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Display the map of nearby pickup locations."
+msgstr "Muestra el mapa de los puntos de recolección cercanos."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Pickup map only (hide list)"
+msgstr "Solo mapa de recolección (ocultar lista)"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Show only the Pickup map and hide the branch list. Select a location from the map pins."
+msgstr "Muestra solo el mapa de recolección y oculta la lista de sucursales. Selecciona la ubicación desde los pines del mapa."
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_pickup_map_only
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_pickup_map_only
+msgid "Pickup map only (hide list)"
+msgstr "Solo mapa de recolección (ocultar lista)"
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_pickup_map_only
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_pickup_map_only
+msgid ""
+"When enabled, Pickup shows only the map (no branch list). Customers select a "
+"location from the map pins."
+msgstr ""
+"Si está activo, Recolección muestra solo el mapa (sin lista de sucursales). "
+"El cliente elige la ubicación desde los pines del mapa."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Checkout labels"
+msgstr "Etiquetas del checkout"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Custom labels for the Ship and Pickup tabs."
+msgstr "Etiquetas personalizadas para las pestañas Envío y Recolección."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Ship label"
+msgstr "Etiqueta de envío"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Pickup label"
+msgstr "Etiqueta de recolección"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Max pickup branches per carrier"
+msgstr "Máximo de sucursales de recolección por transportista"
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid ""
+"Limit pickup branches listed per Envia carrier code (e.g. paquetexpress). "
+"Closest first. Use 0 for no limit. Does not affect Ship rates."
+msgstr ""
+"Limita las sucursales de recolección listadas por código de transportista "
+"Envia (p. ej. paquetexpress). La más cercana primero. Usa 0 para sin "
+"límite. No afecta las tarifas de Envío."
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_enable_pickup
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_enable_pickup
+msgid "Enable pickup in website checkout"
+msgstr "Habilitar recolección en el checkout del sitio web"
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_enable_pickup
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_enable_pickup
+msgid "Show the Pickup option on the ecommerce delivery step."
+msgstr "Muestra la opción Recolección en el paso de entrega del ecommerce."
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_show_map
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_show_map
+msgid "Show pickup map in website checkout"
+msgstr "Mostrar mapa de recolección en el checkout del sitio web"
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_show_map
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_show_map
+msgid "Show the map of pickup locations when Pickup is selected."
+msgstr "Muestra el mapa de puntos de recolección al seleccionar Recolección."
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_ship_label
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_ship_label
+msgid "Checkout Ship label"
+msgstr "Etiqueta de envío del checkout"
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_ship_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_ship_label
+msgid "Label for the Ship tab on the ecommerce delivery step."
+msgstr "Etiqueta de la pestaña Envío en el paso de entrega del ecommerce."
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_ship_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_ship_label
+msgid ""
+"Leave empty to use the translated default. Label for the Ship tab on the "
+"ecommerce delivery step."
+msgstr ""
+"Déjalo vacío para usar el valor predeterminado traducido. Etiqueta de la "
+"pestaña Envío en el paso de entrega del ecommerce."
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_pickup_label
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_pickup_label
+msgid "Checkout Pickup label"
+msgstr "Etiqueta de recolección del checkout"
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_pickup_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_pickup_label
+msgid "Label for the Pickup tab on the ecommerce delivery step."
+msgstr "Etiqueta de la pestaña Recolección en el paso de entrega del ecommerce."
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_pickup_label
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_pickup_label
+msgid ""
+"Leave empty to use the translated default. Label for the Pickup tab on the "
+"ecommerce delivery step."
+msgstr ""
+"Déjalo vacío para usar el valor predeterminado traducido. Etiqueta de la "
+"pestaña Recolección en el paso de entrega del ecommerce."
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_company__envia_checkout_rates_per_carrier
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_checkout_rates_per_carrier
+msgid "Max pickup branches per carrier"
+msgstr "Máximo de sucursales de recolección por transportista"
+
+#. module: envia
+#: model:ir.model.fields,help:envia.field_res_company__envia_checkout_rates_per_carrier
+#: model:ir.model.fields,help:envia.field_res_config_settings__envia_checkout_rates_per_carrier
+msgid ""
+"Maximum pickup branches shown per Envia carrier code in website checkout "
+"(e.g. paquetexpress, dhl; closest first). Use 0 for no limit. Does not "
+"affect Ship (home delivery) rates."
+msgstr ""
+"Número máximo de sucursales de recolección mostradas por código de "
+"transportista Envia en el checkout (p. ej. paquetexpress, dhl; la más "
+"cercana primero). Usa 0 para sin límite. No afecta las tarifas de Envío "
+"(domicilio)."
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/website_pickup.py:0
+msgid "Pickup is disabled for website checkout."
+msgstr "La recolección está deshabilitada en el checkout del sitio web."
 
 #. module: envia
 #. odoo-javascript
@@ -4968,3 +5318,65 @@ msgstr "Este almacén ya está vinculado a una dirección de origen de Envia."
 #: code:addons/envia/models/envia_warehouse_origin.py:0
 msgid "Select a warehouse and an Envia origin address."
 msgstr "Seleccione un almacén y una dirección de origen de Envia."
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "Could not apply rate."
+msgstr "No se pudo aplicar la tarifa."
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "Loading rates…"
+msgstr "Cargando tarifas…"
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "No pickup locations near this address."
+msgstr "No hay puntos de recolección cerca de esta dirección."
+
+#. module: envia
+#. odoo-javascript
+#: code:addons/envia/static/src/website_sale_delivery/envia_checkout.js:0
+msgid "No rates available for this address."
+msgstr "No hay tarifas disponibles para esta dirección."
+
+#. module: envia
+#: model_terms:ir.ui.view,arch_db:envia.envia_delivery_method
+msgid "Delivery route"
+msgstr "Ruta de entrega"
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/models/stock_picking.py:0
+msgid ""
+"Shipment created into Envia<br/>"
+"Tracking Number: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a><br/>"
+"<a href=\"%(url)s\" target=\"_blank\">Open shipping label (PDF)</a>"
+msgstr ""
+"Envío creado en Envia<br/>"
+"Número de seguimiento: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a><br/>"
+"<a href=\"%(url)s\" target=\"_blank\">Abrir guía de envío (PDF)</a>"
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/models/stock_picking.py:0
+msgid ""
+"Shipment created into Envia<br/>"
+"Tracking Number: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a>"
+msgstr ""
+"Envío creado en Envia<br/>"
+"Número de seguimiento: <a href=\"%(tracking_url)s\" target=\"_blank\">"
+"%(tracking)s</a>"
+
+#. module: envia
+#: model:ir.model.fields,field_description:envia.field_res_config_settings__envia_shop_id_display
+#: model_terms:ir.ui.view,arch_db:envia.res_config_settings_view_form_envia
+msgid "Shop ID"
+msgstr "ID de tienda"
+

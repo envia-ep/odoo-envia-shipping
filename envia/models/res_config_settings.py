@@ -43,6 +43,30 @@ class ResConfigSettings(models.TransientModel):
         related="company_id.envia_enable_branches",
         readonly=False,
     )
+    envia_checkout_enable_pickup = fields.Boolean(
+        related="company_id.envia_checkout_enable_pickup",
+        readonly=False,
+    )
+    envia_checkout_show_map = fields.Boolean(
+        related="company_id.envia_checkout_show_map",
+        readonly=False,
+    )
+    envia_checkout_pickup_map_only = fields.Boolean(
+        related="company_id.envia_checkout_pickup_map_only",
+        readonly=False,
+    )
+    envia_checkout_ship_label = fields.Char(
+        related="company_id.envia_checkout_ship_label",
+        readonly=False,
+    )
+    envia_checkout_pickup_label = fields.Char(
+        related="company_id.envia_checkout_pickup_label",
+        readonly=False,
+    )
+    envia_checkout_rates_per_carrier = fields.Integer(
+        related="company_id.envia_checkout_rates_per_carrier",
+        readonly=False,
+    )
     envia_default_carrier = fields.Boolean(
         related="company_id.envia_default_carrier",
         readonly=False,
@@ -84,6 +108,18 @@ class ResConfigSettings(models.TransientModel):
         compute="_compute_envia_oauth_status_labels",
         readonly=True,
     )
+    # ponytail: inline es/en — view .po terms for this settings block stay English in DB.
+    envia_ui_connection_title = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_connection_help = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_connect_help = fields.Text(compute="_compute_envia_connection_ui_labels")
+    envia_ui_shop_id_label = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_company_id_label = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_user_id_label = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_module_label = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_api_key_title = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_api_key_help = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_shipping_token_title = fields.Char(compute="_compute_envia_connection_ui_labels")
+    envia_ui_shipping_token_help = fields.Char(compute="_compute_envia_connection_ui_labels")
     envia_integration_api_key = fields.Char(
         string="Envia Integration API Key",
         compute="_compute_envia_integration_api_key",
@@ -130,6 +166,7 @@ class ResConfigSettings(models.TransientModel):
         readonly=True,
     )
     envia_shop_id_display = fields.Char(
+        string="Shop ID",
         compute="_compute_envia_integration_identity_display",
         readonly=True,
     )
@@ -179,6 +216,55 @@ class ResConfigSettings(models.TransientModel):
         for record in self:
             record.envia_oauth_status_connected = connected
             record.envia_oauth_status_disconnected = disconnected
+
+    @api.depends_context("lang")
+    def _compute_envia_connection_ui_labels(self) -> None:
+        spanish = (self.env.lang or "en_US").startswith("es")
+
+        def t(en: str, es: str) -> str:
+            return es if spanish else en
+
+        title = t("Connection", "Conexión")
+        connection_help = t(
+            "Link your Odoo store with Envia.com and manage integration credentials.",
+            "Vincula tu tienda Odoo con Envia.com y gestiona las credenciales de integración.",
+        )
+        connect_help = t(
+            "This card shows your Envia.com link status (Connected / Not connected), "
+            "shop identity (Shop ID, Company ID, User ID), and Odoo/module versions. "
+            "Use Refresh token if credentials drift after reconnecting. "
+            "Only administrators can refresh the integration token.",
+            "Esta tarjeta muestra el estado del vínculo con Envia.com (Conectado / No conectado), "
+            "la identidad de la tienda (ID de tienda, ID de empresa, ID de usuario) y las versiones "
+            "de Odoo y del módulo. Usa Actualizar token si las credenciales se desincronizan "
+            "tras reconectar. Solo los administradores pueden actualizar el token de integración.",
+        )
+        shop = t("Shop ID", "ID de tienda")
+        company = t("Company ID", "ID de empresa")
+        user = t("User ID", "ID de usuario")
+        module = t("Module", "Módulo")
+        api_title = t("Odoo API key", "Clave API de Odoo")
+        api_help = t(
+            "API key Envia.com uses to call back into Odoo. Generate it here and copy it into your Envia.com integration setup.",
+            "Clave API que Envia.com usa para llamar a Odoo. Genérala aquí y cópiala en la configuración de integración de Envia.com.",
+        )
+        token_title = t("Envia shipping token", "Token de envío Envia")
+        token_help = t(
+            "Bearer token for api.envia.com (quoting, labels, tracking). Saved automatically by Envia.com during integration.",
+            "Token Bearer para api.envia.com (cotización, etiquetas, rastreo). Se guarda automáticamente durante la integración con Envia.com.",
+        )
+        for record in self:
+            record.envia_ui_connection_title = title
+            record.envia_ui_connection_help = connection_help
+            record.envia_ui_connect_help = connect_help
+            record.envia_ui_shop_id_label = shop
+            record.envia_ui_company_id_label = company
+            record.envia_ui_user_id_label = user
+            record.envia_ui_module_label = module
+            record.envia_ui_api_key_title = api_title
+            record.envia_ui_api_key_help = api_help
+            record.envia_ui_shipping_token_title = token_title
+            record.envia_ui_shipping_token_help = token_help
 
     @api.depends_context("uid")
     def _compute_envia_integration_callback_url(self) -> None:

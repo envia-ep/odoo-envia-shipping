@@ -15,3 +15,4 @@ from . import test_delivery_carrier
 from . import test_choose_delivery_apply
 from . import test_billing_info_wizard
 from . import test_warehouse_origin
+from . import test_website_pickup

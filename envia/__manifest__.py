@@ -1,6 +1,6 @@
 {
     "name": "Envia.com Quote and Shipping",
-    "version": "19.0.1.0.0",
+    "version": "19.0.2.0.0",
     "category": "Inventory/Delivery",
     "summary": "The best shipping solution for your business. Connect to 150+ couriers worldwide for domestic and international shipments.",
     "description": """
@@ -8,8 +8,9 @@ Envia.com integration for Odoo 19
 =================================
 
 Connect your Odoo store with Envia.com and quote live carrier rates on sale
-orders through the native Add shipping flow. Label creation and tracking are
-not included in this version.
+orders through the native Add shipping flow. Labels are generated manually on
+the delivery order (Generate / Replace Envia Label); Validate does not create
+labels. Tracking uses the Core carrier contract.
 
 Installation
 ------------
@@ -45,6 +46,7 @@ credentials from Envia.com before release.
         "sale",
         "stock",
         "sale_stock",
+        "stock_delivery",
         "delivery",
         "website_sale",
         "envia_http",
@@ -75,12 +77,16 @@ credentials from Envia.com before release.
         "wizards/envia_quote_onboarding_wizard_views.xml",
         "wizards/envia_billing_info_wizard_views.xml",
         "wizards/envia_warehouse_origin_wizard_views.xml",
+        "views/website_sale_delivery_templates.xml",
     ],
     "assets": {
         "web.assets_backend": [
             "envia/static/src/scss/envia_wizards.scss",
             "envia/static/src/js/envia_api_key_field.js",
             "envia/static/src/xml/envia_api_key_field.xml",
+            "envia/static/src/js/envia_enable_labels_field.js",
+            "envia/static/src/js/envia_dashboard_action.js",
+            "envia/static/src/xml/envia_dashboard_action.xml",
             "envia/static/src/js/envia_plugin_connect_wizard_form.js",
             "envia/static/src/js/envia_wizard_noop_action.js",
             "envia/static/src/js/envia_quote_wizard_form.js",
@@ -89,9 +95,13 @@ credentials from Envia.com before release.
             "envia/static/src/components/envia_generic_form/**/*",
             "envia/static/src/views/envia_quote_list/**/*",
         ],
+        "web.assets_frontend": [
+            "envia/static/src/website_sale_delivery/envia_checkout.scss",
+            "envia/static/src/website_sale_delivery/envia_checkout.js",
+        ],
     },
     "images": [
-        "static/description/icon.png",
+        "static/description/banner.png",
         "static/description/screenshot_connect_wizard.png",
         "static/description/screenshot_envia_portal.png",
         "static/description/screenshot_settings.png",

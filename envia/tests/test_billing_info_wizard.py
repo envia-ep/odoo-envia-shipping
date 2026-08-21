@@ -669,3 +669,77 @@ class TestEnviaBillingInfoWizard(TransactionCase):
         self.assertEqual(match.warehouse_id, warehouse)
         self.assertEqual(match.envia_address_id, "7295564")
         self.assertEqual(warehouse._envia_origin_address_id(), "7295564")
+
+    def test_matching_shop_origin_compares_street_number_zip(self):
+        Wizard = self.env["envia.billing.info.wizard"]
+        payload = {
+            "street": "Aurora boreal",
+            "number": "201",
+            "city": "Guadalupe",
+            "postal_code": "67192",
+            "country": "MX",
+        }
+        existing = {
+            "id": "55",
+            "label": "My Company · Aurora boreal 201 · Guadalupe · 67192",
+            "street": "Aurora boreal 201",
+            "city": "Guadalupe",
+            "zip": "67192",
+            "country_code": "MX",
+        }
+        self.assertEqual(
+            Wizard._matching_shop_origin([existing], payload)["id"],
+            "55",
+        )
+        self.assertFalse(
+            Wizard._matching_shop_origin(
+                [{**existing, "zip": "64000"}],
+                payload,
+            )
+        )
+
+    @patch("odoo.addons.envia.wizards.envia_billing_info_wizard.EnviaClient")
+    def test_save_billing_address_reuses_existing_shop_origin(self, mock_client_cls):
+        self.company.envia_shop_id = "34107"
+        self.company.envia_api_token = "shipping-token"
+        warehouse = self.env["stock.warehouse"].search(
+            [("company_id", "=", self.company.id)],
+            limit=1,
+        )
+        self.assertTrue(warehouse)
+        client = mock_client_cls.return_value
+        client.get_shop_default_addresses.return_value = [
+            {
+                "id": "55",
+                "label": "My Company · Aurora boreal 201 · Guadalupe · 67192",
+                "name": "My Company",
+                "street": "Aurora boreal 201",
+                "city": "Guadalupe",
+                "zip": "67192",
+                "country_code": "MX",
+            }
+        ]
+        client.set_shop_default_address.return_value = {"ok": True}
+
+        result = self.env["envia.billing.info.wizard"].save_billing_address(
+            {
+                "name": "My Company",
+                "company": "My Company",
+                "phone": "8121211454",
+                "email": "a@b.co",
+                "country": "MX",
+                "postal_code": "67192",
+                "street": "Aurora boreal",
+                "number": "201",
+                "city": "Guadalupe",
+                "state": "NL",
+            },
+            warehouse.id,
+        )
+
+        self.assertEqual(result["address_id"], "55")
+        self.assertTrue(result["reused"])
+        client.create_user_address.assert_not_called()
+        client.get_shop_default_addresses.assert_called_once_with("34107")
+        client.set_shop_default_address.assert_called_once_with("34107", "55")
+        self.assertEqual(warehouse._envia_origin_address_id(), "55")

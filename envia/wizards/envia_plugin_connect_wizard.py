@@ -4,6 +4,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from ..services.envia_config import oauth_registration_sandbox
+from ..services.envia_integration_callback import build_callback_url
 from ..services.envia_oauth_client import (
     EnviaOauthClient,
     build_integration_popup_url,
@@ -12,11 +13,12 @@ from ..services.envia_oauth_client import (
 from ..services.envia_plugin_setup import (
     PENDING_SETUP_PARAM,
     bind_integration_database,
+    clear_pending_setup,
     generate_integration_credentials,
     get_envia_module_version,
     get_pending_setup_company_id,
     normalize_envia_plugin_version,
-    clear_pending_setup,
+    normalize_integration_store_url,
 )
 
 
@@ -111,11 +113,66 @@ class EnviaPluginConnectWizard(models.TransientModel):
             message = error.args[0] if error.args else str(error)
             self._mark_integration_error(message)
 
+    def _sync_integration_store_url(self) -> None:
+        """Persist HTTPS store URL for tunnel dev setups (Envia callback requires it)."""
+        self.ensure_one()
+        store_url = normalize_integration_store_url(self.store_url or "")
+        if not store_url:
+            return
+        icp = self.env["ir.config_parameter"].sudo()
+        if normalize_integration_store_url(icp.get_param("web.base.url", "")) != store_url:
+            icp.set_param("web.base.url", store_url)
+        if self.store_url != store_url:
+            self.store_url = store_url
+
+    def _register_integration_with_envia(self) -> None:
+        """Tell Envia the Odoo callback URL before opening the OAuth popup."""
+        self.ensure_one()
+        api_key = (self.api_key or "").strip()
+        if not api_key:
+            return
+        try:
+            EnviaOauthClient(self.env).register_odoo_integration(
+                url=self.store_url,
+                database=self.database_name,
+                email=self.user_email,
+                api_key=api_key,
+                sandbox=oauth_registration_sandbox(),
+                version=get_envia_module_version(self.env),
+                callback_url=build_callback_url(self.env),
+            )
+        except UserError:
+            pass
+
+    def _try_sync_integration_token(self) -> bool:
+        self.ensure_one()
+        company = self.company_id
+        if company._envia_is_shipping_api_configured():
+            return True
+        company._envia_try_sync_shipping_api_token_from_oauth()
+        return company._envia_is_shipping_api_configured()
+
+    def _try_finalize_integration_via_oauth(self) -> bool:
+        """Fallback when Envia validated the store but skipped the Odoo callback."""
+        self.ensure_one()
+        if self._try_sync_integration_token():
+            if self.state == "waiting_external":
+                self._mark_integration_success_from_callback()
+            return True
+        try:
+            access_token, register_body = self._execute_oauth_integration(api_key_value=self.api_key)
+        except UserError:
+            return False
+        self._mark_integration_success(access_token=access_token, register_body=register_body)
+        return self.state == "success"
+
     def action_run_integration(self):
         self.ensure_one()
         if not self._is_envia_connect_admin():
             return self._get_admin_required_notification_action()
         self._commit_for_external_oauth_validation()
+        self._sync_integration_store_url()
+        self._register_integration_with_envia()
         popup_url = self._build_integration_popup_url()
         self.write(
             {
@@ -137,6 +194,8 @@ class EnviaPluginConnectWizard(models.TransientModel):
         next_action = self.action_poll_integration_status()
         if next_action:
             return next_action
+        if self._try_finalize_integration_via_oauth():
+            return self._get_envia_settings_action()
         self.write({"state": "ready", "external_popup_url": False})
         return False
 
@@ -149,7 +208,7 @@ class EnviaPluginConnectWizard(models.TransientModel):
         if self.state != "waiting_external":
             return False
         self.company_id.invalidate_recordset()
-        if not self.company_id._envia_is_shipping_api_configured():
+        if not self._try_sync_integration_token():
             return False
         self._mark_integration_success_from_callback()
         return self._get_envia_settings_action()
@@ -439,7 +498,9 @@ class EnviaPluginConnectWizard(models.TransientModel):
 
     @api.model
     def _create_connected_wizard(self, company):
-        base_url = self.env["ir.config_parameter"].sudo().get_param("web.base.url", "").rstrip("/")
+        base_url = normalize_integration_store_url(
+            self.env["ir.config_parameter"].sudo().get_param("web.base.url", "")
+        )
         plugin_version = normalize_envia_plugin_version(company.envia_plugin_version) or False
         if company.envia_oauth_access_token:
             try:
@@ -513,7 +574,9 @@ class EnviaPluginConnectWizard(models.TransientModel):
             raise UserError(
                 _("Generate the Odoo API key for Envia.com in Settings before refreshing the token.")
             )
-        base_url = self.env["ir.config_parameter"].sudo().get_param("web.base.url", "").rstrip("/")
+        base_url = normalize_integration_store_url(
+            self.env["ir.config_parameter"].sudo().get_param("web.base.url", "")
+        )
         return {
             "store_url": base_url,
             "database_name": self.env.cr.dbname,
@@ -537,6 +600,8 @@ class EnviaPluginConnectWizard(models.TransientModel):
             }
         )
         self._commit_for_external_oauth_validation()
+        self._sync_integration_store_url()
+        self._register_integration_with_envia()
         popup_url = self._build_integration_popup_url()
         self.write(
             {
