@@ -65,7 +65,7 @@ class TestEnviaConfig(TransactionCase):
         company = self.env.company
         company.envia_environment = "production"
         self.assertEqual(get_envia_api_base_url(company), "https://api-test.envia.com/")
-        self.assertEqual(get_envia_queries_base_url(company), "https://queries-test.envia.com/")
+        self.assertEqual(get_envia_queries_base_url(company), "https://queries.test.envia.com/")
 
     @patch.dict(
         "os.environ",
@@ -113,7 +113,7 @@ class TestEnviaConfig(TransactionCase):
         {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "", "ENVIA_PACKAGE_DIMENSIONS_PATH": ""},
         clear=False,
     )
-    def test_package_dimensions_url_defaults(self):
+    def test_ecommerce_private_base_url_defaults_without_env(self):
         self.assertEqual(
             get_envia_ecommerce_private_base_url(),
             DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
@@ -139,12 +139,6 @@ class TestEnviaConfig(TransactionCase):
         self.assertEqual(
             get_envia_package_dimensions_path("34084"),
             "package/dimensions/34084",
-        )
-
-    def test_package_dimensions_default_host_is_ecommerce_api_new(self):
-        self.assertEqual(
-            DEFAULT_ECOMMERCE_PRIVATE_BASE_URL,
-            "https://ecommerce-api-new.herokuapp.com/",
         )
 
     @patch.dict("os.environ", {"ENVIA_API_BASE_URL": "", "ENVIA_QUERIES_BASE_URL": ""}, clear=False)

@@ -1,12 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="ir_cron_envia_tracking_sync" model="ir.cron">
-        <field name="name">Envia: Sync Tracking</field>
-        <field name="model_id" ref="model_envia_shipment"/>
-        <field name="state">code</field>
-        <field name="code">model._cron_sync_tracking()</field>
-        <field name="interval_number">30</field>
-        <field name="interval_type">minutes</field>
-        <field name="active">True</field>
-    </record>
+    <!-- Tracking timeline cron removed; file kept so the manifest path resolves. -->
 </odoo>

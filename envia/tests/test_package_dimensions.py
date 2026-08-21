@@ -11,7 +11,12 @@ from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapt
 
 @tagged("post_install", "-at_install")
 class TestPackageDimensionsFetch(TransactionCase):
-    def test_fetch_package_dimensions_posts_to_ecommerce_api_new(self):
+    @patch.dict(
+        "os.environ",
+        {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "https://ecommerce-private.test/"},
+        clear=False,
+    )
+    def test_fetch_package_dimensions_posts_to_ecommerce_private_base(self):
         shipping_client = EnviaClient("https://api-test.envia.com/", "shipping-token")
         adapter = EnviaOfficialAdapter(shipping_client, shop_id="34084")
         items = [
@@ -52,7 +57,7 @@ class TestPackageDimensionsFetch(TransactionCase):
                 auth_token="envia-api-token",
             )
         mock_client_cls.assert_called_once_with(
-            "https://ecommerce-api-new.herokuapp.com/",
+            "https://ecommerce-private.test/",
             "envia-api-token",
         )
         path, payload = mock_client_cls.return_value._post.call_args.args[:2]
@@ -64,6 +69,11 @@ class TestPackageDimensionsFetch(TransactionCase):
         # Item weight 0.5 vs Envia package weight 1 → sync hint.
         self.assertIn("sync package dimensions", hint.lower())
 
+    @patch.dict(
+        "os.environ",
+        {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "https://ecommerce-private.test/"},
+        clear=False,
+    )
     def test_fetch_package_dimensions_lists_odoo_items_instead_of_multiple_products(self):
         shipping_client = EnviaClient("https://api-test.envia.com/", "shipping-token")
         adapter = EnviaOfficialAdapter(shipping_client, shop_id="34084")
@@ -119,6 +129,11 @@ class TestPackageDimensionsFetch(TransactionCase):
         self.assertNotIn("Multiple products", preview)
         self.assertIn("differs from Odoo", hint)
 
+    @patch.dict(
+        "os.environ",
+        {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "https://ecommerce-private.test/"},
+        clear=False,
+    )
     def test_fetch_package_dimensions_uses_adapter_shipping_token_by_default(self):
         client = EnviaClient("https://api-test.envia.com/", "shipping-api-token")
         adapter = EnviaOfficialAdapter(client, shop_id="34084")
@@ -131,17 +146,22 @@ class TestPackageDimensionsFetch(TransactionCase):
             }
             adapter.fetch_package_dimensions([], "MXN")
         mock_client_cls.assert_called_once_with(
-            "https://ecommerce-api-new.herokuapp.com/",
+            "https://ecommerce-private.test/",
             "shipping-api-token",
         )
 
+    @patch.dict(
+        "os.environ",
+        {"ENVIA_ECOMMERCE_PRIVATE_BASE_URL": "https://ecommerce-private.test/"},
+        clear=False,
+    )
     def test_fetch_package_dimensions_soft_fails_on_api_error(self):
         client = EnviaClient("https://api-test.envia.com/", "shipping-token")
         adapter = EnviaOfficialAdapter(client, shop_id="34084")
         with patch(
             "odoo.addons.envia.services.envia_official_adapter.EnviaClient"
         ) as mock_client_cls:
-            mock_client_cls.return_value.post.side_effect = UserError("boom")
+            mock_client_cls.return_value._post.side_effect = UserError("boom")
             preview, hint = adapter.fetch_package_dimensions(
                 [],
                 "MXN",

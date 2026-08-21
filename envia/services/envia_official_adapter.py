@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any
 import logging
 import re
@@ -14,16 +16,14 @@ from .dto import (
     QuoteResponse,
     QuoteService,
     ShipmentItem,
-    TrackRequest,
-    TrackResponse,
-    TrackResult,
-    TrackingEvent,
 )
 from .envia_adapter_base import EnviaAdapterBase
 from .envia_client import EnviaApiError, EnviaClient
 from .envia_config import (
     get_envia_checkout_path,
     get_envia_ecommerce_private_base_url,
+    get_envia_label_create_path,
+    get_envia_order_shipments_unlink_path,
     get_envia_package_dimensions_path,
 )
 
@@ -87,6 +87,13 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             body = self.client._post(get_envia_checkout_path(self.shop_id), payload)
         except (UserError, EnviaApiError):
             raise
+        checkout_error = EnviaOfficialAdapter._checkout_error_message(body)
+        if checkout_error:
+            _logger.warning("Envia checkout meta error: %s", checkout_error)
+            raise UserError(_(
+                "To get shipping quotes, enable Checkout in Envia.com "
+                "and select the carriers you want to quote."
+            ))
 
         services = self._parse_checkout_rates(body, request)
         carriers = self._resolve_carriers(request.carriers)
@@ -123,7 +130,7 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
     ) -> tuple[str, str]:
         """Preview packages Envia will use. Soft-fails to (preview_or_empty, hint).
 
-        Bearer = envia_api_token against ecommerce-api-new package/dimensions.
+        Bearer = envia_api_token against ENVIA_ECOMMERCE_PRIVATE_BASE_URL package/dimensions.
         """
         if not self.shop_id:
             return "", _(
@@ -134,8 +141,9 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             return "", _(
                 "Envia API token is missing. Check Settings > Envia Shipping."
             )
+        ecommerce_base = get_envia_ecommerce_private_base_url()
         payload = EnviaOfficialAdapter.build_package_dimensions_payload(items, currency)
-        client = EnviaClient(get_envia_ecommerce_private_base_url(), token)
+        client = EnviaClient(ecommerce_base, token)
         try:
             body = client._post(
                 get_envia_package_dimensions_path(self.shop_id),
@@ -341,6 +349,105 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             lines.extend(f"- {error}" for error in carrier_errors[:5])
         return "\n".join(lines)
 
+    def create_label_for_odoo_order(
+        self,
+        order_id: int,
+        service_id: int | str | None = None,
+    ) -> CreateShipmentResponse:
+        """Create label via ecommerce ``POST label/create/{shop_id}``.
+
+        Body uses the Odoo ``sale.order`` database id (string) and the selected
+        Envia numeric ``service_id``.
+        """
+        if not self.shop_id:
+            raise UserError(
+                _("Envia Shop ID is missing. Reconnect the Envia.com integration.")
+            )
+        if not order_id:
+            raise UserError(_("A sale order is required to create an Envia label."))
+        token = (self.client.token or "").strip()
+        if not token:
+            raise UserError(
+                _("Envia API token is missing. Check Settings > Envia Shipping.")
+            )
+        payload: dict[str, Any] = {"id": str(order_id)}
+        if sid := EnviaOfficialAdapter._label_create_service_id(service_id):
+            payload["service_id"] = sid
+        ecommerce_base = get_envia_ecommerce_private_base_url()
+        client = EnviaClient(ecommerce_base, token)
+        body = client._post(
+            get_envia_label_create_path(self.shop_id),
+            payload,
+        )
+        return self._parse_label_create_response(body)
+
+    @staticmethod
+    def _label_create_service_id(service_id: int | str | None) -> int | None:
+        if service_id in (None, False, ""):
+            return None
+        try:
+            value = int(service_id)
+        except (TypeError, ValueError):
+            return None
+        return value or None
+
+    @staticmethod
+    def _parse_label_create_response(body: dict[str, Any]) -> CreateShipmentResponse:
+        if not isinstance(body, dict):
+            raise UserError(_("Envia label/create returned an invalid response."))
+        if not body.get("status"):
+            raw = body.get("message") or body.get("error") or body
+            message = EnviaClient.humanize_api_message(raw)
+            # Known API phrases become a full UX sentence — do not prefix.
+            if message != str(raw or "").strip():
+                raise UserError(message)
+            raise UserError(_("Envia did not generate a label: %s") % message)
+        data = body.get("data") or {}
+        labels = data.get("labels") if isinstance(data, dict) else None
+        if not isinstance(labels, list) or not labels:
+            raise UserError(_("Envia label/create returned no labels."))
+        # ponytail: store first PDF URL only; multi-package trackings joined.
+        first = labels[0] if isinstance(labels[0], dict) else {}
+        trackings = [
+            (entry.get("trackingNumber") or "").strip()
+            for entry in labels
+            if isinstance(entry, dict) and (entry.get("trackingNumber") or "").strip()
+        ]
+        tracking_number = ",".join(trackings)
+        label_url = (first.get("label") or first.get("labelUrl") or "").strip() or None
+        carrier = (first.get("carrier") or "").strip()
+        shipment_id = first.get("shipmentId") or first.get("folio") or ""
+        order_id = first.get("orderId") or first.get("order_id") or ""
+        total_price = first.get("totalPrice")
+        if total_price in (None, ""):
+            total_price = first.get("price")
+        pricing_total = float(total_price) if total_price not in (None, "") else None
+        if not tracking_number and not label_url:
+            raise UserError(
+                _("Envia returned an incomplete label/create response.")
+            )
+        return CreateShipmentResponse(
+            shipment_id=shipment_id,
+            tracking_number=tracking_number,
+            carrier=carrier,
+            carrier_name=(
+                first.get("carrierDescription") or first.get("carrierName") or carrier
+            ),
+            service=(
+                first.get("serviceDescription")
+                or first.get("serviceName")
+                or first.get("service")
+                or ""
+            ),
+            status=first.get("status") or "created",
+            status_description=first.get("statusDescription") or _("Label created"),
+            label_url=label_url,
+            pricing_total=pricing_total,
+            pricing_currency=first.get("currency"),
+            order_id=order_id or None,
+            raw=body if isinstance(body, dict) else {},
+        )
+
     def create_shipment(self, request: CreateShipmentRequest) -> CreateShipmentResponse:
         carrier, service = self._parse_service_id(
             request.service_id,
@@ -407,8 +514,11 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
     ) -> CreateShipmentResponse:
         data_list = body.get("data")
         if not isinstance(data_list, list) or not data_list:
-            message = body.get("message") or body.get("error") or body
+            raw = body.get("message") or body.get("error") or body
+            message = EnviaClient.humanize_api_message(raw)
             _logger.error("Envia ship/generate empty data: %s", body)
+            if message != str(raw or "").strip():
+                raise UserError(message)
             raise UserError(_("Envia did not generate a label: %s") % message)
 
         data = data_list[0]
@@ -443,31 +553,44 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             raw=body,
         )
 
-    def track(self, request: TrackRequest) -> TrackResponse:
+    def cancel_shipments(
+        self,
+        shipment_ids: list[int],
+        *,
+        queries_base_url: str,
+    ) -> dict[str, Any] | list[Any]:
+        """Cancel Envia shipments via queries ``shipments/bulk/cancel``."""
+        if not shipment_ids:
+            raise UserError(_("No Envia shipment IDs provided for cancellation."))
         body = self.client._post(
-            "ship/generaltrack/",
-            {"trackingNumbers": request.tracking_numbers},
+            "shipments/bulk/cancel",
+            {"shipments": shipment_ids},
+            base_url=queries_base_url,
         )
-        results = []
-        for entry in body.get("data") or []:
-            events = [
-                TrackingEvent(
-                    timestamp=event.get("timestamp", ""),
-                    location=event.get("location"),
-                    description=event.get("description", ""),
-                    status=event.get("status"),
-                )
-                for event in entry.get("events", [])
-            ]
-            results.append(
-                TrackResult(
-                    tracking_number=entry.get("trackingNumber", ""),
-                    status=entry.get("status", ""),
-                    carrier=entry.get("carrier"),
-                    events=events,
-                )
+        return body if isinstance(body, (dict, list)) else {}
+
+    def unlink_order_shipment(
+        self,
+        order_id: int,
+        shipment_id: int,
+        *,
+        queries_base_url: str,
+    ) -> dict[str, Any] | list[Any]:
+        """Detach a label from an order (queries DELETE order-shipments)."""
+        if not self.shop_id:
+            raise UserError(
+                _("Envia Shop ID is missing. Reconnect the Envia.com integration.")
             )
-        return TrackResponse(results=results, raw=body)
+        if not order_id:
+            raise UserError(_("A sale order is required to unlink an Envia label."))
+        if not shipment_id:
+            raise UserError(_("No Envia shipment ID provided to unlink."))
+        body = self.client._delete(
+            get_envia_order_shipments_unlink_path(self.shop_id, order_id),
+            {"shipment_id": shipment_id},
+            base_url=queries_base_url,
+        )
+        return body if isinstance(body, (dict, list)) else {}
 
     def _resolve_carriers(self, carriers: str) -> list[str]:
         if not carriers or carriers.strip().lower() == "all":
@@ -642,6 +765,19 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         if contact.branch_code:
             payload["branchCode"] = contact.branch_code
         return payload
+
+    @staticmethod
+    def _checkout_error_message(body: Any) -> str:
+        if not isinstance(body, dict):
+            return ""
+        if str(body.get("meta") or "").lower() != "error":
+            return ""
+        error = body.get("error")
+        if isinstance(error, dict):
+            return str(
+                error.get("message") or error.get("description") or error.get("code") or ""
+            ).strip()
+        return str(body.get("message") or "").strip()
 
     @staticmethod
     def _normalize_checkout_rates_body(body: Any) -> list[dict[str, Any]]:

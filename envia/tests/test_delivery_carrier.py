@@ -1,7 +1,11 @@
 from unittest.mock import patch
 
 from odoo.exceptions import UserError
-from odoo.addons.envia.services.dto import QuoteResponse, QuoteService
+from odoo.addons.envia.services.dto import (
+    CreateShipmentResponse,
+    QuoteResponse,
+    QuoteService,
+)
 from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
@@ -41,10 +45,9 @@ class TestEnviaDeliveryCarrier(TransactionCase):
         self.assertEqual(self.carrier.name, "Envia.com")
         self.assertEqual(self.carrier.integration_level, "rate")
         self.assertTrue(hasattr(self.carrier, "envia_rate_shipment"))
-        # Rate-only: no native label/cancel/tracking dispatchers yet.
-        self.assertFalse(hasattr(self.carrier, "envia_send_shipping"))
-        self.assertFalse(hasattr(self.carrier, "envia_cancel_shipment"))
-        self.assertFalse(hasattr(self.carrier, "envia_get_tracking_link"))
+        self.assertTrue(hasattr(self.carrier, "envia_send_shipping"))
+        self.assertTrue(hasattr(self.carrier, "envia_cancel_shipment"))
+        self.assertTrue(hasattr(self.carrier, "envia_get_tracking_link"))
 
     def _mock_rate_quote(self, response=None, *, quote_side_effect=None):
         """Isolate envia_rate_shipment from address/geocode/HTTP."""
@@ -1489,12 +1492,8 @@ class TestEnviaDeliveryCarrier(TransactionCase):
         self.assertIn("FedEx", quote.selected_service_label)
         self.assertEqual(quote.sale_order_id, self.order)
 
-    def test_rate_verify_confirm_so_does_not_auto_generate_envia_label(self):
-        """Add shipping applies rate; Core validate path must not auto-label.
-
-        stock_delivery only calls send_to_shipper when
-        integration_level=rate_and_ship. Envia stays at rate.
-        """
+    def test_rate_validate_path_does_not_call_send_to_shipper(self):
+        """With integration_level=rate, Core validate path does not auto-send."""
         self.assertEqual(self.carrier.integration_level, "rate")
         product = self.env["product.product"].create(
             {
@@ -1545,18 +1544,7 @@ class TestEnviaDeliveryCarrier(TransactionCase):
             get_adapter.return_value.quote.return_value = response
             wizard.button_confirm()
 
-        delivery_line = order.order_line.filtered("is_delivery")
-        self.assertTrue(delivery_line)
-        self.assertEqual(delivery_line.price_unit, 120.0)
-        self.assertEqual(order.carrier_id, self.carrier)
-        quote = wizard.envia_wizard_id.quote_id
-        self.assertTrue(quote.selected_service_id)
-        self.assertEqual(quote.sale_order_id, order)
-        self.assertFalse(order.envia_shipment_ids)
-
         order.action_confirm()
-        self.assertEqual(order.state, "sale")
-
         warehouse = order.warehouse_id
         picking_type = warehouse.out_type_id
         picking = self.env["stock.picking"].create(
@@ -1568,6 +1556,7 @@ class TestEnviaDeliveryCarrier(TransactionCase):
                 "carrier_id": self.carrier.id,
                 "sale_id": order.id,
                 "origin": order.name,
+                "state": "done",
             }
         )
         picking_type.print_label = True
@@ -1576,14 +1565,10 @@ class TestEnviaDeliveryCarrier(TransactionCase):
         with patch(
             "odoo.addons.stock_delivery.models.stock_picking.StockPicking"
             ".send_to_shipper"
-        ) as send_to_shipper, patch(
-            "odoo.addons.envia.models.envia_shipment.EnviaShipment"
-            ".action_create_shipment_from_quote"
-        ) as create_label:
+        ) as send_to_shipper:
             picking._send_confirmation_email()
 
         send_to_shipper.assert_not_called()
-        create_label.assert_not_called()
         self.assertFalse(picking.envia_shipment_ids)
 
     def test_add_shipping_after_removing_delivery_does_not_restore_old_quote(self):
@@ -1685,3 +1670,860 @@ class TestEnviaDeliveryCarrier(TransactionCase):
         self.assertEqual(wizard.origin_location_type, "address")
         self.assertEqual(wizard.destination_location_type, "address")
         self.assertFalse(wizard._uses_branch_route())
+
+    def _make_out_picking(self, **extra):
+        warehouse = self.order.warehouse_id
+        picking_type = warehouse.out_type_id
+        vals = {
+            "partner_id": self.partner.id,
+            "picking_type_id": picking_type.id,
+            "location_id": picking_type.default_location_src_id.id,
+            "location_dest_id": self.partner.property_stock_customer.id,
+            "carrier_id": self.carrier.id,
+            "sale_id": self.order.id,
+            "origin": self.order.name,
+        }
+        vals.update(extra)
+        return self.env["stock.picking"].create(vals)
+
+    def _make_quoted_envia_rate(
+        self, picking, *, service_id, envia_service_id, service_name, carrier="fedex"
+    ):
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": service_id,
+                "envia_service_id": envia_service_id,
+                "carrier": carrier,
+                "carrier_name": carrier.title(),
+                "service_name": service_name,
+                "price": float(envia_service_id),
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        service.action_select_service()
+        return quote
+
+    def test_envia_send_shipping_uses_label_create(self):
+        """Send to shipper → ecommerce label/create with sale.order id and service_id."""
+        self.env.company.envia_enable_labels = True
+        self.env.company.envia_shop_id = "34084"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking()
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+                "envia_service_id": 442,
+            }
+        )
+        quote.selected_service_id = service
+        label_body = {
+            "status": True,
+            "data": {
+                "labels": [
+                    {
+                        "orderId": 110342,
+                        "shipmentId": 179761,
+                        "trackingNumber": "1ZSEND",
+                        "label": "https://example.com/label.pdf",
+                        "carrier": "dhl",
+                        "service": "express_1200",
+                        "serviceDescription": "DHL Express Domestic 12:00",
+                        "totalPrice": 13.21,
+                        "currency": "EUR",
+                    }
+                ]
+            },
+        }
+        with patch(
+            "odoo.addons.envia.services.envia_official_adapter.EnviaClient._post",
+            return_value=label_body,
+        ) as mock_post:
+            result = self.carrier.with_context(
+                envia_skip_dedicated_cursor=True,
+            ).envia_send_shipping(picking)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["tracking_number"], "1ZSEND")
+        self.assertAlmostEqual(result[0]["exact_price"], 13.21)
+        shipment = picking.envia_shipment_ids[:1]
+        self.assertTrue(shipment)
+        self.assertEqual(shipment.external_shipment_id, "179761")
+        self.assertEqual(shipment.external_order_id, "110342")
+        self.assertEqual(shipment.label_url, "https://example.com/label.pdf")
+        self.assertEqual(shipment.carrier, "dhl")
+        self.assertEqual(shipment.service_name, "DHL Express Domestic 12:00")
+        self.assertAlmostEqual(shipment.pricing_total, 13.21)
+        self.assertEqual(shipment.pricing_currency_id.name, "EUR")
+        self.assertEqual(self.order.envia_external_order_id, "110342")
+        mock_post.assert_called_once()
+        path, payload = mock_post.call_args.args[:2]
+        self.assertEqual(path, "label/create/34084")
+        self.assertEqual(
+            payload,
+            {"id": str(self.order.id), "service_id": 442},
+        )
+        self.assertTrue(picking._envia_has_label_url_message())
+        body = picking.message_ids.filtered(
+            lambda message: "example.com/label.pdf" in (message.body or "")
+        )[:1].body or ""
+        self.assertIn("Open shipping label (PDF)", body)
+        self.assertIn("1ZSEND", body)
+
+    def test_send_shipping_existing_shipment_posts_label_in_chatter(self):
+        picking = self._make_out_picking()
+        self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "tracking_number": "1209169292",
+                "label_url": "https://example.com/guia.pdf",
+                "carrier": "noventa9minutos",
+                "carrier_name": "noventa9Minutos",
+                "state": "created",
+            }
+        )
+        result = self.carrier.envia_send_shipping(picking)
+        self.assertEqual(result[0]["tracking_number"], "1209169292")
+        self.assertTrue(picking._envia_has_label_url_message())
+        body = picking.message_ids.filtered(
+            lambda message: "example.com/guia.pdf" in (message.body or "")
+        )[:1].body or ""
+        self.assertIn("Open shipping label (PDF)", body)
+        self.assertIn("1209169292", body)
+
+    def test_envia_send_shipping_unlinks_prior_then_creates_label(self):
+        """Generate after Replace: DELETE prior fulfillment, then label/create."""
+        self.env.company.envia_enable_labels = True
+        self.env.company.envia_shop_id = "34165"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking()
+        self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "external_shipment_id": "179909",
+                "external_order_id": "110331",
+                "tracking_number": "1ZOLD",
+                "state": "replaced",
+            }
+        )
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+                "envia_service_id": 442,
+            }
+        )
+        quote.selected_service_id = service
+        label_body = {
+            "status": True,
+            "data": {
+                "labels": [
+                    {
+                        "orderId": 110342,
+                        "shipmentId": 179941,
+                        "trackingNumber": "1ZNEW",
+                        "label": "https://example.com/new.pdf",
+                        "carrier": "dhl",
+                        "serviceDescription": "DHL Express",
+                        "totalPrice": 13.21,
+                        "currency": "EUR",
+                    }
+                ]
+            },
+        }
+        with patch(
+            "odoo.addons.envia.services.envia_client.EnviaClient._delete",
+            return_value={"success": True},
+        ) as mock_delete, patch(
+            "odoo.addons.envia.services.envia_official_adapter.EnviaClient._post",
+            return_value=label_body,
+        ) as mock_post:
+            result = self.carrier.with_context(
+                envia_skip_dedicated_cursor=True,
+            ).envia_send_shipping(picking)
+        mock_delete.assert_called_once()
+        delete_path, delete_payload = mock_delete.call_args.args[:2]
+        self.assertEqual(
+            delete_path,
+            "orders/34165/110331/fulfillment/order-shipments",
+        )
+        self.assertEqual(delete_payload, {"shipment_id": 179909})
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args.args[0], "label/create/34165")
+        self.assertEqual(
+            mock_post.call_args.args[1],
+            {"id": str(self.order.id), "service_id": 442},
+        )
+        self.assertEqual(result[0]["tracking_number"], "1ZNEW")
+        new_shipment = picking.envia_shipment_ids.filtered(
+            lambda item: item.state == "created"
+        )[:1]
+        self.assertEqual(new_shipment.external_order_id, "110342")
+        self.assertEqual(new_shipment.external_shipment_id, "179941")
+
+    def test_envia_send_shipping_unlinks_using_so_order_id_fallback(self):
+        """Regenerate DELETE uses sale.order.envia_external_order_id when row lacks it."""
+        self.env.company.envia_enable_labels = True
+        self.env.company.envia_shop_id = "34165"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking()
+        self.order.envia_external_order_id = "110331"
+        self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "external_shipment_id": "179909",
+                "tracking_number": "1ZOLD",
+                "state": "replaced",
+            }
+        )
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+                "envia_service_id": 922,
+            }
+        )
+        quote.selected_service_id = service
+        label_body = {
+            "status": True,
+            "data": {
+                "labels": [
+                    {
+                        "orderId": 110342,
+                        "shipmentId": 179941,
+                        "trackingNumber": "1ZNEW",
+                        "label": "https://example.com/new.pdf",
+                        "carrier": "dhl",
+                        "serviceDescription": "DHL Express",
+                        "totalPrice": 13.21,
+                        "currency": "EUR",
+                    }
+                ]
+            },
+        }
+        with patch(
+            "odoo.addons.envia.services.envia_client.EnviaClient._delete",
+            return_value={"success": True},
+        ) as mock_delete, patch(
+            "odoo.addons.envia.services.envia_official_adapter.EnviaClient._post",
+            return_value=label_body,
+        ):
+            self.carrier.with_context(
+                envia_skip_dedicated_cursor=True,
+            ).envia_send_shipping(picking)
+        mock_delete.assert_called_once()
+        delete_path, delete_payload = mock_delete.call_args.args[:2]
+        self.assertEqual(
+            delete_path,
+            "orders/34165/110331/fulfillment/order-shipments",
+        )
+        self.assertEqual(delete_payload, {"shipment_id": 179909})
+        self.assertEqual(self.order.envia_external_order_id, "110342")
+
+    def test_envia_send_shipping_already_fulfilled_without_ids_raises(self):
+        self.env.company.envia_enable_labels = True
+        self.env.company.envia_shop_id = "34165"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking()
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        with patch(
+            "odoo.addons.envia.services.envia_official_adapter.EnviaClient._post",
+            side_effect=UserError(
+                "Envia did not generate a label: "
+                "{'status': False, 'errors': ['Order already fulfilled']}"
+            ),
+        ):
+            with self.assertRaises(UserError) as ctx:
+                self.carrier.with_context(
+                    envia_skip_dedicated_cursor=True,
+                ).envia_send_shipping(picking)
+        self.assertIn("no Envia orderId/shipmentId", str(ctx.exception))
+
+    def test_envia_get_tracking_link(self):
+        picking = self._make_out_picking(carrier_tracking_ref="1Z999")
+        url = self.carrier.envia_get_tracking_link(picking)
+        self.assertEqual(url, "https://envia.com/rastreo?label=1Z999")
+        picking.carrier_tracking_ref = False
+        self.assertFalse(self.carrier.envia_get_tracking_link(picking))
+
+    def test_envia_cancel_shipment_unlinks_on_envia_and_locally(self):
+        self.env.company.envia_shop_id = "34165"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking(carrier_tracking_ref="1ZCANCEL")
+        shipment = self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "external_shipment_id": "40772217",
+                "external_order_id": "110342",
+                "tracking_number": "1ZCANCEL",
+                "state": "created",
+            }
+        )
+        picking.envia_label_url = "https://example.com/old.pdf"
+        with patch(
+            "odoo.addons.envia.services.envia_client.EnviaClient._delete",
+            return_value={"success": True},
+        ) as mock_delete:
+            self.carrier.envia_cancel_shipment(picking)
+        mock_delete.assert_called_once()
+        path, payload = mock_delete.call_args.args[:2]
+        self.assertEqual(
+            path,
+            "orders/34165/110342/fulfillment/order-shipments",
+        )
+        self.assertEqual(payload, {"shipment_id": 40772217})
+        self.assertEqual(shipment.state, "replaced")
+        self.assertFalse(picking.carrier_tracking_ref)
+        self.assertFalse(picking.envia_label_url)
+
+    def test_envia_replace_label_unlinks_and_opens_quote_wizard(self):
+        self.env.company.envia_shop_id = "34165"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking(carrier_tracking_ref="1ZREPLACE")
+        picking.state = "assigned"
+        shipment = self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "external_shipment_id": "179909",
+                "external_order_id": "110331",
+                "tracking_number": "1ZREPLACE",
+                "state": "created",
+            }
+        )
+        self.assertTrue(picking.envia_can_replace_label)
+        self.assertFalse(picking.envia_can_generate_label)
+        with patch(
+            "odoo.addons.envia.services.envia_client.EnviaClient._delete",
+            return_value={"success": True},
+        ) as mock_delete:
+            action = picking.action_envia_replace_label()
+        mock_delete.assert_called_once()
+        path, payload = mock_delete.call_args.args[:2]
+        self.assertEqual(
+            path,
+            "orders/34165/110331/fulfillment/order-shipments",
+        )
+        self.assertEqual(payload, {"shipment_id": 179909})
+        self.assertEqual(shipment.state, "replaced")
+        self.assertFalse(picking.carrier_tracking_ref)
+        self.assertEqual(action["res_model"], "envia.quote.wizard")
+        self.assertTrue(picking.envia_can_generate_label)
+        self.assertFalse(picking.envia_can_replace_label)
+
+    def test_envia_generate_label_hidden_when_setting_disabled(self):
+        self.env.company.envia_enable_labels = False
+        picking = self._make_out_picking()
+        picking.state = "assigned"
+        self.assertFalse(picking.envia_can_generate_label)
+        with self.assertRaises(UserError) as error:
+            picking.action_envia_generate_label()
+        self.assertIn("Enable label generation", str(error.exception))
+
+    def test_envia_replace_label_retires_original_quote(self):
+        self.env.company.envia_shop_id = "34165"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking(carrier_tracking_ref="1ZREPLACE")
+        picking.state = "assigned"
+        quote = self._make_quoted_envia_rate(
+            picking,
+            service_id="fedex:1",
+            envia_service_id=101,
+            service_name="Economy",
+        )
+        self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "external_shipment_id": "179909",
+                "external_order_id": "110331",
+                "tracking_number": "1ZREPLACE",
+                "state": "created",
+            }
+        )
+        with patch(
+            "odoo.addons.envia.services.envia_client.EnviaClient._delete",
+            return_value={"success": True},
+        ):
+            picking.action_envia_replace_label()
+        self.assertEqual(quote.state, "used")
+        self.assertFalse(picking._get_active_envia_quote())
+
+    def test_envia_replace_label_continues_without_envia_order_id(self):
+        """Old shipments without orderId: local unlink only, no blocking API error."""
+        self.env.company.envia_shop_id = "34165"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking(carrier_tracking_ref="1ZOLD")
+        picking.state = "assigned"
+        shipment = self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "external_shipment_id": "179900",
+                "tracking_number": "1ZOLD",
+                "state": "created",
+            }
+        )
+        with patch(
+            "odoo.addons.envia.services.envia_client.EnviaClient._delete",
+        ) as mock_delete:
+            action = picking.action_envia_replace_label()
+        mock_delete.assert_not_called()
+        self.assertEqual(shipment.state, "replaced")
+        self.assertFalse(picking.carrier_tracking_ref)
+        self.assertEqual(action["res_model"], "envia.quote.wizard")
+
+    def test_get_active_envia_quote_uses_latest_rate_after_requote(self):
+        """Replace + re-quote must not keep the first selected service."""
+        picking = self._make_out_picking()
+        old = self._make_quoted_envia_rate(
+            picking,
+            service_id="fedex:1",
+            envia_service_id=101,
+            service_name="Economy",
+        )
+        new = self._make_quoted_envia_rate(
+            picking,
+            service_id="dhl:express",
+            envia_service_id=202,
+            service_name="Express",
+            carrier="dhl",
+        )
+        self.assertEqual(picking._get_active_envia_quote(), new)
+        self.assertNotEqual(picking._get_active_envia_quote(), old)
+        self.assertEqual(self.order.envia_service_id, 202)
+        self.assertEqual(self.order.envia_module["service_id"], "202")
+        self.assertEqual(self.order.envia_module["service_name"], "Express")
+
+    def test_send_shipping_syncs_latest_quote_not_first_selected(self):
+        """label/create must expose the newly selected rate, not the original one."""
+        self.env.company.envia_enable_labels = True
+        self.env.company.envia_shop_id = "34084"
+        self.env.company.envia_api_token = "shipping-token"
+        picking = self._make_out_picking()
+        self._make_quoted_envia_rate(
+            picking,
+            service_id="fedex:1",
+            envia_service_id=101,
+            service_name="Economy",
+        )
+        self._make_quoted_envia_rate(
+            picking,
+            service_id="dhl:express",
+            envia_service_id=202,
+            service_name="Express",
+            carrier="dhl",
+        )
+        captured = {}
+
+        def _create_label(order_id):
+            captured["envia_service_id"] = self.order.envia_service_id
+            captured["service_id"] = self.order.envia_module["service_id"]
+            return CreateShipmentResponse(
+                shipment_id=179941,
+                tracking_number="1ZNEW",
+                carrier="dhl",
+                carrier_name="DHL",
+                service="Express",
+                status="created",
+                status_description="ok",
+                label_url="https://example.com/new.pdf",
+            )
+
+        with patch.object(
+            EnviaOfficialAdapter, "create_label_for_odoo_order", side_effect=_create_label
+        ):
+            self.carrier.with_context(
+                envia_skip_dedicated_cursor=True,
+            ).envia_send_shipping(picking)
+        self.assertEqual(captured["envia_service_id"], 202)
+        self.assertEqual(captured["service_id"], "202")
+
+    def test_quote_wizard_select_rate_persists_over_previous_quote(self):
+        picking = self._make_out_picking()
+        old = self._make_quoted_envia_rate(
+            picking,
+            service_id="fedex:1",
+            envia_service_id=101,
+            service_name="Economy",
+        )
+        new = self._make_quoted_envia_rate(
+            picking,
+            service_id="dhl:express",
+            envia_service_id=202,
+            service_name="Express",
+            carrier="dhl",
+        )
+        wizard = self.env["envia.quote.wizard"].with_context(
+            envia_skip_auto_quote=True,
+            envia_skip_branch_autoload=True,
+        ).create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "quote_id": new.id,
+                "weight": 1.0,
+                "content": "Test",
+            }
+        )
+        cheaper = self.env["envia.quote.wizard.service"].create(
+            {
+                "wizard_id": wizard.id,
+                "service_id": "fedex:1",
+                "envia_service_id": 101,
+                "carrier": "fedex",
+                "carrier_name": "Fedex",
+                "service_name": "Economy",
+                "price": 101.0,
+                "is_selected": True,
+            }
+        )
+        selected = self.env["envia.quote.wizard.service"].create(
+            {
+                "wizard_id": wizard.id,
+                "service_id": "dhl:express",
+                "envia_service_id": 202,
+                "carrier": "dhl",
+                "carrier_name": "Dhl",
+                "service_name": "Express",
+                "price": 202.0,
+            }
+        )
+        wizard.action_select_service_rate(service_id=selected.service_id)
+        self.assertFalse(cheaper.is_selected)
+        self.assertTrue(selected.is_selected)
+        self.assertEqual(new.selected_service_id.envia_service_id, 202)
+        self.assertEqual(self.order.envia_service_id, 202)
+        self.assertEqual(old.state, "used")
+        self.assertEqual(picking._get_active_envia_quote(), new)
+
+    def test_envia_generate_label_calls_send_to_shipper(self):
+        picking = self._make_out_picking()
+        picking.state = "assigned"
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        self.assertTrue(picking.envia_can_generate_label)
+        with patch.object(type(picking), "send_to_shipper", return_value=True) as send:
+            picking.action_envia_generate_label()
+        send.assert_called_once()
+
+    def test_envia_generate_label_is_idempotent_when_label_exists(self):
+        picking = self._make_out_picking(carrier_tracking_ref="1ZEXISTING")
+        picking.state = "assigned"
+        self.env["envia.shipment"].create(
+            {
+                "picking_id": picking.id,
+                "company_id": self.env.company.id,
+                "tracking_number": "1ZEXISTING",
+                "state": "created",
+            }
+        )
+        with patch.object(type(picking), "send_to_shipper", return_value=True) as send:
+            self.assertTrue(picking.action_envia_generate_label())
+        send.assert_not_called()
+
+    def test_create_shipment_posts_label_url_on_picking_chatter(self):
+        picking = self._make_out_picking()
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        response = CreateShipmentResponse(
+            shipment_id=40772217,
+            tracking_number="1ZLABEL",
+            carrier="fedex",
+            carrier_name="FedEx",
+            service="Economy",
+            status="created",
+            status_description="ok",
+            label_url="https://example.com/label.pdf",
+        )
+        shipment = self.env["envia.shipment"].create_from_api_response(
+            response, quote, picking=picking
+        )
+        self.assertFalse(shipment.label_attachment_id)
+        self.assertEqual(shipment.label_url, "https://example.com/label.pdf")
+        self.assertEqual(picking.carrier_tracking_ref, "1ZLABEL")
+        label_messages = picking.message_ids.filtered(
+            lambda message: "example.com/label.pdf" in (message.body or "")
+        )
+        self.assertTrue(label_messages)
+        self.assertTrue(picking._envia_has_label_url_message())
+
+    def test_create_from_api_keeps_shipment_without_local_pdf(self):
+        picking = self._make_out_picking()
+        quote = self.env["envia.quote"].create(
+            {
+                "picking_id": picking.id,
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "fedex:1",
+                "carrier": "fedex",
+                "carrier_name": "FedEx",
+                "service_name": "Economy",
+                "price": 120.0,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        response = CreateShipmentResponse(
+            shipment_id="",
+            tracking_number="1ZNOROLLBACK",
+            carrier="fedex",
+            carrier_name="FedEx",
+            service="Economy",
+            status="created",
+            status_description="ok",
+            label_url="https://example.com/label.pdf",
+        )
+        shipment = self.env["envia.shipment"].create_from_api_response(
+            response, quote, picking=picking
+        )
+        self.assertTrue(shipment.exists())
+        self.assertFalse(shipment.label_attachment_id)
+        self.assertEqual(shipment.tracking_number, "1ZNOROLLBACK")
+        self.assertEqual(picking.carrier_tracking_ref, "1ZNOROLLBACK")
+        self.assertEqual(quote.state, "used")
+        self.assertTrue(picking._envia_has_label_url_message())
+
+    def test_send_shipping_recovers_bookkeeping_when_tracking_exists(self):
+        picking = self._make_out_picking(carrier_tracking_ref="2117041242")
+        quote = self.env["envia.quote"].create(
+            {
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "dhl:1",
+                "carrier": "dhl",
+                "carrier_name": "DHL",
+                "service_name": "express_1200",
+                "price": 27.32,
+                "currency_name": self.order.currency_id.name,
+            }
+        )
+        quote.selected_service_id = service
+        with patch.object(
+            type(picking), "_get_active_envia_quote", return_value=quote
+        ):
+            shipment = self.env["envia.shipment"].create_bookkeeping_from_picking(
+                picking, quote=quote
+            )
+        shipment.label_url = "https://example.com/already.pdf"
+        picking.envia_label_url = shipment.label_url
+        picking._envia_post_label_url(
+            label_url=shipment.label_url,
+            tracking_number=picking.carrier_tracking_ref,
+        )
+        with patch.object(
+            type(picking), "_get_active_envia_quote", return_value=quote
+        ), patch(
+            "odoo.addons.envia.models.delivery_carrier.get_envia_adapter"
+        ) as mock_adapter:
+            result = self.carrier.envia_send_shipping(picking)
+        mock_adapter.assert_not_called()
+        self.assertEqual(result[0]["tracking_number"], "2117041242")
+        self.assertEqual(picking.envia_shipment_ids, shipment)
+        self.assertEqual(quote.state, "used")
+
+    def test_envia_post_label_url_in_chatter(self):
+        picking = self._make_out_picking(carrier_tracking_ref="1ZCORE")
+        picking._envia_post_label_url(
+            label_url="https://s3.example.com/guia.pdf",
+            tracking_number="1ZCORE",
+        )
+        self.assertEqual(picking.envia_label_url, "https://s3.example.com/guia.pdf")
+        self.assertTrue(picking._envia_has_label_url_message())
+        body = picking.message_ids[:1].body or ""
+        self.assertIn("<br/>", body)
+        self.assertIn('<a href="https://s3.example.com/guia.pdf"', body)
+        self.assertIn("Open shipping label (PDF)", body)
+        self.assertIn("https://envia.com/rastreo?label=1ZCORE", body)
+        self.assertNotIn("&lt;br", body)
+        # UX: do not dump the raw S3 URL as visible link text.
+        self.assertNotIn(">https://s3.example.com/guia.pdf<", body)
+        self.assertFalse(
+            self.env["ir.attachment"].search_count(
+                [
+                    ("res_model", "=", "stock.picking"),
+                    ("res_id", "=", picking.id),
+                    ("name", "=like", "LabelShipping-%"),
+                ]
+            ),
+            "Odoo must not download/store Envia label PDFs",
+        )

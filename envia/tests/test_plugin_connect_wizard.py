@@ -131,7 +131,12 @@ class TestEnviaPluginConnectWizard(TransactionCase):
                 "external_popup_url": "https://oauth.example.com/popup",
             }
         )
-        wizard.action_on_external_popup_closed()
+        with patch.object(
+            type(wizard),
+            "_execute_oauth_integration",
+            side_effect=UserError("OAuth skipped in test"),
+        ):
+            wizard.action_on_external_popup_closed()
         wizard.invalidate_recordset()
         self.assertEqual(wizard.state, "ready")
         self.assertFalse(wizard.external_popup_url)

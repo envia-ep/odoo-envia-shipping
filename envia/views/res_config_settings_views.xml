@@ -10,10 +10,19 @@
                     <field name="envia_has_api_token" invisible="1"/>
                     <field name="envia_oauth_connected" invisible="1"/>
 
-                    <block title="Connection"
-                           help="Link your Odoo store with Envia.com and manage integration credentials.">
-                        <setting string="Envia.com"
-                                 help="Connect your store with Envia.com. Only administrators can refresh the integration token.">
+                    <block>
+                        <div class="o_envia_settings_section_header w-100 mb-3">
+                            <h2 class="mb-1">
+                                <field name="envia_ui_connection_title" nolabel="1" readonly="1"/>
+                            </h2>
+                            <div class="text-muted">
+                                <field name="envia_ui_connection_help" nolabel="1" readonly="1"/>
+                            </div>
+                        </div>
+                        <setting string="Envia.com">
+                            <div class="text-muted small mb-2 o_envia_settings_connect_help">
+                                <field name="envia_ui_connect_help" nolabel="1" readonly="1"/>
+                            </div>
                             <div class="o_envia_settings_connection_card">
                                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                                     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -38,21 +47,27 @@
                                 </div>
                                 <div class="o_envia_settings_version_row d-flex flex-wrap gap-2 mt-2">
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">Shop ID</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_shop_id_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_shop_id_display"
                                                nolabel="1"
                                                readonly="1"
                                                class="oe_inline"/>
                                     </span>
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">Company ID</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_company_id_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_company_id_display"
                                                nolabel="1"
                                                readonly="1"
                                                class="oe_inline"/>
                                     </span>
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">User ID</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_user_id_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_user_id_display"
                                                nolabel="1"
                                                readonly="1"
@@ -66,7 +81,9 @@
                                                class="oe_inline"/>
                                     </span>
                                     <span class="o_envia_settings_version_chip">
-                                        <span class="o_envia_settings_version_label">Module</span>
+                                        <span class="o_envia_settings_version_label">
+                                            <field name="envia_ui_module_label" nolabel="1" readonly="1"/>
+                                        </span>
                                         <field name="envia_module_version_display"
                                                nolabel="1"
                                                readonly="1"
@@ -75,9 +92,13 @@
                                 </div>
                             </div>
                         </setting>
-                        <setting string="Odoo API key"
-                                 help="API key Envia.com uses to call back into Odoo. Generate it here and copy it into your Envia.com integration setup."
-                                 groups="base.group_system">
+                        <setting groups="base.group_system">
+                            <div class="o_form_label">
+                                <field name="envia_ui_api_key_title" nolabel="1" readonly="1"/>
+                            </div>
+                            <div class="text-muted small mb-2">
+                                <field name="envia_ui_api_key_help" nolabel="1" readonly="1"/>
+                            </div>
                             <field name="envia_integration_api_key"
                                    widget="envia_api_key"
                                    nolabel="1"
@@ -93,9 +114,13 @@
                                 </span>
                             </div>
                         </setting>
-                        <setting string="Envia shipping token"
-                                 help="Bearer token for api.envia.com (quoting, labels, tracking). Saved automatically by Envia.com during integration."
-                                 groups="base.group_system">
+                        <setting groups="base.group_system">
+                            <div class="o_form_label">
+                                <field name="envia_ui_shipping_token_title" nolabel="1" readonly="1"/>
+                            </div>
+                            <div class="text-muted small mb-2">
+                                <field name="envia_ui_shipping_token_help" nolabel="1" readonly="1"/>
+                            </div>
                             <field name="envia_api_token_display"
                                    widget="envia_api_key"
                                    nolabel="1"
@@ -108,7 +133,7 @@
                     </block>
 
                     <block title="Shipping defaults"
-                           help="Default carriers used when quoting from sales orders and Add shipping.">
+                           help="Backend only: sales orders and Add shipping. Does not change the ecommerce website checkout.">
                         <setting>
                             <div class="o_envia_settings_toggle_stack">
                                 <div class="o_envia_settings_toggle_row">
@@ -122,15 +147,87 @@
                                 </div>
                                 <div class="o_envia_settings_toggle_row">
                                     <div class="o_envia_settings_toggle_copy">
-                                        <div class="o_form_label">Enable branch pickup and delivery</div>
+                                        <div class="o_form_label">Enable branch pickup and delivery (backend)</div>
                                         <div class="text-muted small">
-                                            Allow origin/destination branch pickup and drop-off.
-                                            When disabled, only home delivery routes are available.
+                                            Allow origin/destination branch routes when quoting from sales orders and the Envia quote wizard. Independent from ecommerce checkout Pickup.
                                         </div>
                                     </div>
                                     <field name="envia_enable_branches" nolabel="1"/>
                                 </div>
+                                <div class="o_envia_settings_toggle_row">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Enable label generation</div>
+                                        <div class="text-muted small">
+                                            Show Generate Envia Label on deliveries and Generate Label in the quote wizard.
+                                        </div>
+                                    </div>
+                                    <field name="envia_enable_labels" widget="envia_enable_labels" nolabel="1"/>
+                                </div>
                             </div>
+                        </setting>
+                    </block>
+
+                    <block title="Ecommerce website checkout"
+                           help="Online store only (website delivery step). Does not change quoting on sales orders or the Envia quote wizard.">
+                        <setting>
+                            <div class="o_envia_settings_toggle_stack">
+                                <div class="o_envia_settings_toggle_row">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Enable pickup in ecommerce checkout</div>
+                                        <div class="text-muted small">
+                                            Show the Pickup tab on the website delivery step. Requires Website / ecommerce.
+                                        </div>
+                                    </div>
+                                    <field name="envia_checkout_enable_pickup" nolabel="1"/>
+                                </div>
+                                <div class="o_envia_settings_toggle_row"
+                                     invisible="not envia_checkout_enable_pickup or envia_checkout_pickup_map_only">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Show pickup map in ecommerce</div>
+                                        <div class="text-muted small">
+                                            Display the map of nearby pickup locations on the website.
+                                        </div>
+                                    </div>
+                                    <field name="envia_checkout_show_map" nolabel="1"/>
+                                </div>
+                                <div class="o_envia_settings_toggle_row"
+                                     invisible="not envia_checkout_enable_pickup">
+                                    <div class="o_envia_settings_toggle_copy">
+                                        <div class="o_form_label">Pickup map only (hide list)</div>
+                                        <div class="text-muted small">
+                                            Show only the Pickup map and hide the branch list on the website. Select a location from the map pins.
+                                        </div>
+                                    </div>
+                                    <field name="envia_checkout_pickup_map_only" nolabel="1"/>
+                                </div>
+                            </div>
+                        </setting>
+                        <setting string="Ecommerce checkout labels"
+                                  help="Labels for the Ship and Pickup tabs on the website delivery step.">
+                            <div class="content-group">
+                                <div class="row mt-2">
+                                    <label for="envia_checkout_ship_label" class="col-lg-3 o_light_label">
+                                        Ship label
+                                    </label>
+                                    <field name="envia_checkout_ship_label"
+                                           class="col-lg-3"
+                                           placeholder="Ship"/>
+                                </div>
+                                <div class="row"
+                                     invisible="not envia_checkout_enable_pickup">
+                                    <label for="envia_checkout_pickup_label" class="col-lg-3 o_light_label">
+                                        Pickup label
+                                    </label>
+                                    <field name="envia_checkout_pickup_label"
+                                           class="col-lg-3"
+                                           placeholder="Pickup"/>
+                                </div>
+                            </div>
+                        </setting>
+                        <setting string="Max pickup branches per carrier (ecommerce)"
+                                  help="Limit pickup branches on the website per Envia carrier code (e.g. paquetexpress). Closest first. Use 0 for no limit. Does not affect Ship rates or backend quoting."
+                                  invisible="not envia_checkout_enable_pickup">
+                            <field name="envia_checkout_rates_per_carrier"/>
                         </setting>
                     </block>
 

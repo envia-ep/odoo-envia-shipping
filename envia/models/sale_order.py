@@ -1,5 +1,8 @@
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_compare
+
+from ..services.website_pickup import WebsitePickupService
 
 
 class SaleOrder(models.Model):
@@ -13,6 +16,7 @@ class SaleOrder(models.Model):
     envia_enable_labels = fields.Boolean(related="company_id.envia_enable_labels")
     envia_show_quote_archive = fields.Boolean(related="company_id.envia_show_quote_archive")
     envia_can_create_shipment = fields.Boolean(compute="_compute_envia_can_create_shipment")
+    envia_can_reship = fields.Boolean(compute="_compute_envia_can_reship")
     envia_status = fields.Selection(
         [
             ("none", "No Envia activity"),
@@ -24,6 +28,11 @@ class SaleOrder(models.Model):
     )
     envia_summary = fields.Char(compute="_compute_envia_status")
     envia_service_id = fields.Integer(string="Envia Service ID", copy=False)
+    envia_external_order_id = fields.Char(
+        string="Envia Order ID",
+        copy=False,
+        help="Envia ecommerce orderId from label/create; used to unlink fulfillments.",
+    )
 
     def write(self, vals):
         to_recompute = self.env["sale.order"]
@@ -63,9 +72,99 @@ class SaleOrder(models.Model):
             has_quote = bool(order._get_active_envia_quote())
             order.envia_can_create_shipment = has_quote
 
+    def _envia_pending_outgoing_pickings(self):
+        self.ensure_one()
+        return self.picking_ids.filtered(
+            lambda picking: picking.picking_type_code == "outgoing"
+            and picking.state not in ("done", "cancel")
+        )
+
+    def _envia_lines_needing_procurement(self):
+        """Goods lines where ordered qty exceeds procured qty (e.g. after return)."""
+        self.ensure_one()
+        precision = self.env["decimal.precision"].precision_get("Product Unit")
+        lines = self.order_line.filtered(
+            lambda line: not line.display_type
+            and not line.is_delivery
+            and line.product_id.type == "consu"
+        )
+        return lines.filtered(
+            lambda line: float_compare(
+                line.product_uom_qty,
+                line._get_qty_procurement(),
+                precision_digits=precision,
+            )
+            > 0
+        )
+
+    @api.depends(
+        "state",
+        "picking_ids",
+        "picking_ids.state",
+        "picking_ids.picking_type_id.code",
+        "order_line.product_uom_qty",
+        "order_line.is_delivery",
+        "order_line.move_ids",
+        "order_line.move_ids.state",
+        "order_line.move_ids.quantity",
+        "order_line.move_ids.product_uom_qty",
+    )
+    def _compute_envia_can_reship(self):
+        for order in self:
+            order.envia_can_reship = (
+                order.state == "sale"
+                and not order._envia_pending_outgoing_pickings()
+                and bool(order._envia_lines_needing_procurement())
+            )
+
+    def action_envia_reship(self):
+        """Create a new linked outgoing delivery after a validated return.
+
+        Uses Core ``_action_launch_stock_rule`` so moves keep ``sale_line_id``.
+        Requires the return to update SO quantities (``to_refund``).
+        """
+        self.ensure_one()
+        if self.state != "sale":
+            raise UserError(_("Only confirmed sales orders can be reshipped."))
+        pending = self._envia_pending_outgoing_pickings()
+        if pending:
+            return self._get_action_view_picking(pending)
+        lines = self._envia_lines_needing_procurement()
+        if not lines:
+            raise UserError(
+                _(
+                    "Nothing to reship. Validate a customer return with "
+                    "'Update quantities on SO/PO' enabled, without changing "
+                    "the ordered quantity."
+                )
+            )
+        before = self.picking_ids
+        was_locked = self.locked
+        if was_locked:
+            self.action_unlock()
+        try:
+            lines._action_launch_stock_rule()
+        finally:
+            if was_locked and not self.locked:
+                self.action_lock()
+        new_outs = (self.picking_ids - before).filtered(
+            lambda picking: picking.picking_type_code == "outgoing"
+            and picking.state not in ("done", "cancel")
+        ) or self._envia_pending_outgoing_pickings()
+        if not new_outs:
+            raise UserError(_("Could not create a new outgoing delivery."))
+        vals = {}
+        if self.carrier_id:
+            vals["carrier_id"] = self.carrier_id.id
+        if self.envia_service_id:
+            vals["envia_service_id"] = self.envia_service_id
+        if vals:
+            new_outs.write(vals)
+        return self._get_action_view_picking(new_outs)
+
     def _compute_envia_status(self):
         for order in self:
-            shipment = order.envia_shipment_ids[:1]
+            shipment = order.envia_shipment_ids.filtered(lambda item: item._is_active())[:1]
             quote = order._get_active_envia_quote()
             if shipment:
                 order.envia_status = "shipped"
@@ -93,7 +192,14 @@ class SaleOrder(models.Model):
 
     def _get_active_envia_quote(self):
         self.ensure_one()
-        return self.envia_quote_ids.filtered(lambda quote: quote._is_label_ready())[:1]
+        forced = self.env.context.get("envia_force_quote_id")
+        if forced:
+            quote = self.env["envia.quote"].browse(forced)
+            if quote.exists():
+                return quote
+        return self.envia_quote_ids.filtered(
+            lambda quote: quote._is_label_ready()
+        ).sorted("id", reverse=True)[:1]
 
     def _get_envia_quote_for_delivery_line(self):
         """Label-ready quote, or latest selection still validating branch route."""
@@ -213,15 +319,21 @@ class SaleOrder(models.Model):
         if pickings:
             pickings.write({"envia_service_id": envia_service_id})
 
-    def _sync_envia_shipping_line(self):
+    def _sync_envia_shipping_line(self, quote=None):
         self.ensure_one()
-        quote = self._get_active_envia_quote()
+        quote = quote or self._get_active_envia_quote()
         if not quote:
             raise UserError(_("Get Envia rates and select a carrier first."))
         self._envia_sync_service_id_from_quote(quote)
         price = self._envia_shipping_unit_price(quote)
-        carrier = self.env.ref("envia.delivery_carrier_envia", raise_if_not_found=False)
+        carrier = self._get_envia_delivery_carrier()
         if carrier:
+            # rate_shipment applies fiscal position + margin/% + fixed_margin + free_over.
+            rate = carrier.rate_shipment(self)
+            if rate.get("success"):
+                price = rate["price"]
+            else:
+                price = carrier._apply_margins(price, self)
             self.set_delivery_line(carrier, price)
             return self.order_line.filtered("is_delivery")[:1]
         product = self._get_envia_shipping_product()
@@ -311,3 +423,58 @@ class SaleOrder(models.Model):
                 lambda picking: picking.state not in ("done", "cancel")
             ).write({"envia_service_id": order.envia_service_id})
         return result
+
+    def _set_pickup_location(self, pickup_location_data):
+        super()._set_pickup_location(pickup_location_data)
+        self.ensure_one()
+        if self.carrier_id.delivery_type != "envia":
+            return
+        location = self.pickup_location_data or {}
+        option = (location.get("additional_data") or {}).get("envia_option") or {}
+        if not option and location.get("id"):
+            # Location id is our option id: pickup:carrier:branch:service
+            option = {
+                "id": location.get("id"),
+                "route_type": "pickup",
+                "name": location.get("name"),
+                "street": location.get("street"),
+                "city": location.get("city"),
+                "zip": location.get("zip_code"),
+                "state_code": location.get("state"),
+                "country_code": location.get("country_code"),
+                "lat": location.get("latitude"),
+                "lng": location.get("longitude"),
+            }
+            parts = str(location.get("id") or "").split(":")
+            if len(parts) >= 4 and parts[0] == "pickup":
+                option.update(
+                    {
+                        "carrier": parts[1],
+                        "branch_code": parts[2],
+                        "service_id": ":".join(parts[3:]),
+                    }
+                )
+        if not option.get("branch_code"):
+            return
+        option.setdefault("route_type", "pickup")
+        WebsitePickupService(self.env).apply_selection(self, option)
+
+    def _check_cart_is_ready_to_be_paid(self):
+        super()._check_cart_is_ready_to_be_paid()
+        self.ensure_one()
+        if self.only_services or self.carrier_id.delivery_type != "envia":
+            return
+        quote = self._get_active_envia_quote()
+        if not quote:
+            raise ValidationError(
+                _(
+                    "Select an Envia shipping rate or pickup location before paying."
+                )
+            )
+        if (
+            quote.destination_location_type == "branch"
+            and not quote.destination_branch_code
+        ):
+            raise ValidationError(
+                _("Select an Envia pickup location before paying.")
+            )

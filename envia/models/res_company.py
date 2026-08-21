@@ -2,6 +2,7 @@ from odoo import _, api, fields, models
 
 from odoo.exceptions import UserError
 
+from ..const import get_envia_dashboard_embed_url
 from ..services.envia_config import (
     get_envia_api_base_url,
     get_envia_queries_base_url,
@@ -110,6 +111,43 @@ class ResCompany(models.Model):
         default=True,
         help="Allow origin/destination branch (pickup and drop-off at carrier branches). When disabled, only home delivery routes are available.",
     )
+    envia_checkout_enable_pickup = fields.Boolean(
+        string="Enable pickup in website checkout",
+        default=True,
+        help="Show the Pickup option on the ecommerce delivery step.",
+    )
+    envia_checkout_show_map = fields.Boolean(
+        string="Show pickup map in website checkout",
+        default=True,
+        help="Show the map of pickup locations when Pickup is selected.",
+    )
+    envia_checkout_pickup_map_only = fields.Boolean(
+        string="Pickup map only (hide list)",
+        default=False,
+        help=(
+            "When enabled, Pickup shows only the map (no branch list). "
+            "Customers select a location from the map pins."
+        ),
+    )
+    envia_checkout_ship_label = fields.Char(
+        string="Checkout Ship label",
+        default="",
+        help="Leave empty to use the translated default. Label for the Ship tab on the ecommerce delivery step.",
+    )
+    envia_checkout_pickup_label = fields.Char(
+        string="Checkout Pickup label",
+        default="",
+        help="Leave empty to use the translated default. Label for the Pickup tab on the ecommerce delivery step.",
+    )
+    envia_checkout_rates_per_carrier = fields.Integer(
+        string="Max pickup branches per carrier",
+        default=3,
+        help=(
+            "Maximum pickup branches shown per Envia carrier code in website "
+            "checkout (e.g. paquetexpress, dhl; closest first). Use 0 for no "
+            "limit. Does not affect Ship (home delivery) rates."
+        ),
+    )
     envia_default_carrier = fields.Boolean(
         string="Use Envia as default shipping method",
         default=False,
@@ -117,8 +155,8 @@ class ResCompany(models.Model):
     )
     envia_enable_labels = fields.Boolean(
         string="Enable Label Generation",
-        default=False,
-        help="Show Generate Label actions on quotes, pickings, and the quote wizard.",
+        default=True,
+        help="Show Generate / Replace Envia Label on deliveries, quotes, and the quote wizard.",
     )
     envia_show_quote_archive = fields.Boolean(
         string="Show Quote Archive",
@@ -374,3 +412,33 @@ class ResCompany(models.Model):
             [("code", "=", self._envia_default_branch_carrier())],
             limit=1,
         ).id
+
+    @api.model
+    def action_open_envia_dashboard(self):
+        company = self.env.company
+        if not company.envia_oauth_connected:
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "title": _("Envia.com"),
+                    "message": _(
+                        "Connect your store with Envia.com before opening the dashboard."
+                    ),
+                    "type": "warning",
+                    "sticky": False,
+                },
+            }
+        store_url = (self.env["ir.config_parameter"].sudo().get_param("web.base.url") or "").rstrip(
+            "/"
+        )
+        action = self.env["ir.actions.actions"]._for_xml_id("envia.action_envia_dashboard_client")
+        action["params"] = {
+            "url": get_envia_dashboard_embed_url(
+                store_url=store_url,
+                company=company.envia_company_id,
+                shop=company.envia_shop_id,
+            ),
+        }
+        action["target"] = "current"
+        return action

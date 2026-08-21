@@ -186,6 +186,18 @@ class EnviaQuote(models.Model):
             and self._route_matches_selected_service()
         )
 
+    def _retire_sibling_quotes(self):
+        """Mark older quoted rates used so label/create cannot reuse them."""
+        self.ensure_one()
+        siblings = self.env["envia.quote"]
+        if self.sale_order_id:
+            siblings |= self.sale_order_id.envia_quote_ids
+        if self.picking_id:
+            siblings |= self.picking_id.envia_quote_ids
+        (siblings - self).filtered(lambda item: item.state == "quoted").write(
+            {"state": "used"}
+        )
+
     @staticmethod
     def _envia_module_str(value, *, money=False):
         if value in (None, False, ""):
