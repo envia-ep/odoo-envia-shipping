@@ -9,7 +9,6 @@ from . import res_users_apikeys
 from . import envia_read_grouping
 from . import envia_quote_service
 from . import envia_quote
-from . import envia_tracking_event
 from . import envia_shipment
 from . import sale_order
 from . import stock_picking

@@ -140,7 +140,7 @@ class PayloadMapper:
             state=EnviaOfficialAdapter.envia_state_code(country_code, state_code),
             postal_code=postal_code or "",
             country=country_code or "",
-            phone=phone or company_partner.phone or company_partner.mobile or "5555555555",
+            phone=phone or company_partner.phone or "5555555555",
             email=email or company_partner.email or "shipping@company.com",
             branch_code=branch_code or None,
         )
@@ -220,7 +220,7 @@ class PayloadMapper:
             contact.district = resolved_district
         company_partner = company.partner_id
         if not contact.phone:
-            contact.phone = company_partner.phone or company_partner.mobile or "5555555555"
+            contact.phone = company_partner.phone or "5555555555"
         if not contact.email:
             contact.email = company_partner.email or "shipping@company.com"
         missing = []

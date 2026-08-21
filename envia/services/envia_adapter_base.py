@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from .dto import CreateShipmentRequest, CreateShipmentResponse, QuoteRequest, QuoteResponse, TrackRequest, TrackResponse
+from .dto import CreateShipmentRequest, CreateShipmentResponse, QuoteRequest, QuoteResponse
 
 
 class EnviaAdapterBase(ABC):
@@ -10,8 +10,4 @@ class EnviaAdapterBase(ABC):
 
     @abstractmethod
     def create_shipment(self, request: CreateShipmentRequest) -> CreateShipmentResponse:
-        pass
-
-    @abstractmethod
-    def track(self, request: TrackRequest) -> TrackResponse:
         pass

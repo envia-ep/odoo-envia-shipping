@@ -873,6 +873,39 @@ class EnviaBillingInfoWizard(models.TransientModel):
         )
 
     @api.model
+    def _norm_origin_part(self, value) -> str:
+        return " ".join(str(value or "").casefold().split())
+
+    @api.model
+    def _matching_shop_origin(self, addresses, payload: dict):
+        """Return an existing shop origin that matches street+number, zip, city."""
+        street = self._norm_origin_part(
+            f"{payload.get('street') or ''} {payload.get('number') or ''}"
+        )
+        postal = self._norm_origin_part(
+            payload.get("postal_code") or payload.get("zip")
+        )
+        if not street or not postal or not isinstance(addresses, list):
+            return None
+        city = self._norm_origin_part(payload.get("city"))
+        country = self._norm_origin_part(
+            payload.get("country") or payload.get("country_code")
+        )
+        for address in addresses or []:
+            if not isinstance(address, dict):
+                continue
+            if self._norm_origin_part(address.get("street")) != street:
+                continue
+            if self._norm_origin_part(address.get("zip")) != postal:
+                continue
+            if city and self._norm_origin_part(address.get("city")) != city:
+                continue
+            if country and self._norm_origin_part(address.get("country_code")) != country:
+                continue
+            return address
+        return None
+
+    @api.model
     def save_billing_address(self, form_values: dict, warehouse_id=None) -> dict:
         """Create Envia user address then link it as the shop origin default.
 
@@ -924,8 +957,15 @@ class EnviaBillingInfoWizard(models.TransientModel):
         payload["location_iden"] = str(warehouse.lot_stock_id.id)
 
         client = EnviaClient(company._envia_get_queries_base_url(), token)
-        create_body = client.create_user_address(payload)
-        address_id = EnviaClient.extract_address_id(create_body)
+        origins = client.get_shop_default_addresses(shop_id)
+        existing = self._matching_shop_origin(origins, payload)
+        reused = bool(existing and existing.get("id"))
+        if reused:
+            address_id = str(existing["id"])
+            create_body = existing
+        else:
+            create_body = client.create_user_address(payload)
+            address_id = EnviaClient.extract_address_id(create_body)
         # Same Bearer token and Queries host; both endpoints are POST.
         match_body = client.set_shop_default_address(shop_id, address_id)
         label_parts = [
@@ -958,6 +998,7 @@ class EnviaBillingInfoWizard(models.TransientModel):
             "create": create_body,
             "match": match_body,
             "warehouse_origin_id": warehouse_match.id,
+            "reused": reused,
         }
 
     @api.model
