@@ -218,7 +218,7 @@ class TestEnviaBillingInfoWizard(TransactionCase):
         field_ids = set(wizard.line_ids.mapped("field_id"))
         self.assertEqual(
             field_ids,
-            {"address1", "identificationNumber", "reference", "alias"},
+            {"address1", "identificationNumber", "reference"},
         )
         self.assertNotIn("state", field_ids)
         self.assertNotIn("city_select", field_ids)
@@ -400,7 +400,11 @@ class TestEnviaBillingInfoWizard(TransactionCase):
         mock_form.assert_called_once()
         self.assertEqual(mock_form.call_args.args[1], "ES")
         self.assertFalse(wizard.schema_warning)
-        self.assertTrue(wizard.line_ids.filtered(lambda line: line.name == "street"))
+        self.assertTrue(
+            wizard.line_ids.filtered(
+                lambda line: line.field_id == "street" or line.data_name == "street"
+            )
+        )
 
     @patch(
         "odoo.addons.envia.wizards.envia_billing_info_wizard.EnviaGeocodesClient.lookup_zipcode",
