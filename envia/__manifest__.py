@@ -1,6 +1,6 @@
 {
     "name": "Envia.com Quote and Shipping",
-    "version": "19.0.2.0.1",
+    "version": "19.0.2.0.2",
     "category": "Inventory/Delivery",
     "summary": "The best shipping solution for your business. Connect to 150+ couriers worldwide for domestic and international shipments.",
     "description": """
@@ -34,7 +34,7 @@ credentials from Envia.com before release.
     """,
     "author": "Envia.com",
     "website": "https://envia.com",
-    "license": "Other proprietary",
+    "license": "LGPL-3",
     "depends": [
         "base",
         "mail",
