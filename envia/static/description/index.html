@@ -27,26 +27,19 @@
         <div class="oe_span12">
             <h2>Installation</h2>
             <p>
-                Install only <strong>Envia.com</strong> from Apps. Odoo installs every module dependency
-                automatically &#8212; you do not need to install <code>envia_http</code>
-                or standard apps such as Sales and Inventory one by one.
+                Install only <strong>Envia.com</strong> (<code>envia</code>) from Apps.
+                Odoo installs every module dependency automatically (Sales, Inventory,
+                Delivery, and related apps).
             </p>
-            <h3 class="oe_mt32">Before you install (server administrator)</h3>
+            <h3 class="oe_mt32">Odoo.sh / Apps Store</h3>
             <ol>
-                <li>
-                    Make sure the package is on the Odoo addons path. The distribution includes
-                    <code>envia</code> and <code>envia_http</code>.
-                </li>
-                <li>
-                    Add the HTTP bridge to <code>server_wide_modules</code> in <code>odoo.conf</code>
-                    and restart Odoo. This is required for Envia.com OAuth and callbacks
-                    (routes must load before a database is selected):
-                    <pre>server_wide_modules = web,base,envia_http</pre>
-                </li>
+                <li>Use <strong>Deploy on Odoo.sh</strong> (or put this package on the addons path).</li>
+                <li>Update Apps List and install <strong>Envia.com</strong> (<code>envia</code>).</li>
             </ol>
-            <h3 class="oe_mt32">In Odoo Apps</h3>
+            <h3 class="oe_mt32">On-premise</h3>
             <ol>
-                <li>Install <strong>Envia.com</strong> (<code>envia</code>) &#8212; dependencies install automatically.</li>
+                <li>Put the <code>envia</code> folder on the Odoo addons path.</li>
+                <li>Install <strong>Envia.com</strong> (<code>envia</code>) from Apps.</li>
             </ol>
         </div>
     </div>
@@ -248,14 +241,6 @@
                             Sales (<code>sale</code>, <code>sale_stock</code>),
                             Inventory (<code>stock</code>),
                             Delivery (<code>delivery</code>)
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Bundled dependencies</th>
-                        <td>
-                            Included in the package and installed automatically &#8212;
-                            no separate Apps install:
-                            Envia HTTP Bridge (<code>envia_http</code>)
                         </td>
                     </tr>
                     <tr>

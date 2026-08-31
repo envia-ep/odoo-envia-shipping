@@ -69,6 +69,16 @@ class EnviaClient:
                         "Open Settings > Envia Shipping and click Refresh token."
                     )
                 )
+            raw = response.text or ""
+            try:
+                err_body = response.json()
+            except json.JSONDecodeError:
+                err_body = None
+            if err_body is not None:
+                raw = EnviaClient.extract_api_error_raw(err_body, fallback=raw)
+            message = EnviaClient.humanize_api_message(raw)
+            if message != str(raw or "").strip():
+                raise UserError(message)
             raise UserError(_("Invalid Envia API token. Check Settings > Envia Shipping."))
 
         if response.status_code == 404 and not self.use_bearer_auth:
@@ -90,7 +100,18 @@ class EnviaClient:
             ) from error
 
         if response.status_code >= 400:
-            message = self._response_error_message(body, response)
+            raw = EnviaClient.extract_api_error_raw(
+                body, fallback=response.text or ""
+            )
+            message = EnviaClient.humanize_api_message(raw)
+            if isinstance(raw, (list, tuple)):
+                raw_text = "\n".join(
+                    str(part) for part in raw if part not in (None, False, "")
+                )
+            else:
+                raw_text = str(raw or "").strip()
+            if message != raw_text:
+                raise UserError(message)
             error_code = body.get("error", "") if isinstance(body, dict) else ""
             if error_code == "INVALID_POSTAL_CODE":
                 raise UserError(_("Invalid postal code: %s") % message)
@@ -121,12 +142,138 @@ class EnviaClient:
         )
 
     @staticmethod
+    def extract_api_error_raw(body, fallback: str = "") -> str | list:
+        """Prefer ``message`` / ``error``; business validation uses ``errors``."""
+        if isinstance(body, dict):
+            if body.get("message"):
+                return body["message"]
+            error = body.get("error")
+            if isinstance(error, str) and error.strip():
+                return error
+            errors = body.get("errors")
+            if isinstance(errors, list) and errors:
+                return errors
+            if error not in (None, False, ""):
+                return error
+            return fallback
+        if isinstance(body, list) and body:
+            first = body[0]
+            if isinstance(first, dict):
+                return EnviaClient.extract_api_error_raw(first, fallback=fallback)
+            return first
+        return fallback
+
+    @staticmethod
     def humanize_api_message(message) -> str:
+        """Map known Envia label/create phrases to actionable UserError text."""
+        if isinstance(message, (list, tuple)):
+            parts = [
+                EnviaClient.humanize_api_message(part)
+                for part in message
+                if part not in (None, False, "")
+            ]
+            return "\n".join(parts) if parts else ""
+
         text = str(message or "").strip()
         folded = text.casefold()
+
+        # Longer / more specific phrases first.
+        if "order not found and could not be saved" in folded:
+            return _(
+                "Envia found the order in the store but could not sync it. "
+                "Check multi-destination or marketplace settings, then try again."
+            )
+        if "unexpected error during order creation" in folded:
+            return _(
+                "Envia could not create the order record. Try again; "
+                "if it persists, contact Envia support."
+            )
+        if "no available packages with quoted service" in folded:
+            return _(
+                "No packages are available for the quoted service "
+                "(already labeled, or missing a rate). Get a new quote or "
+                "unlink existing Envia shipments, then try again."
+            )
+        if "carrier print options not found" in folded or (
+            "carrier print option not found" in folded
+        ):
+            return _(
+                "Envia has no print options for this shipping service. "
+                "Select another rate and try again."
+            )
+        if "feature not available for this ecommerce" in folded:
+            return _(
+                "Label generation is not available for this ecommerce "
+                "integration. Contact Envia support."
+            )
         if "feature not enabled" in folded:
             return _(
-                'Turn on "Label generation from the store" in Envia for this shop, then try again.'
+                'Turn on "Label generation from the store" in Envia for this '
+                "shop, then try again."
+            )
+        if "user token expired" in folded:
+            return _(
+                "Your Envia session expired. Open Settings > Envia Shipping "
+                "and reconnect."
+            )
+        if "user token is invalid" in folded:
+            return _(
+                "Invalid Envia API token. Check Settings > Envia Shipping "
+                "and reconnect."
+            )
+        if "shop not found" in folded:
+            return _(
+                "Envia shop was not found. Reconnect the Envia.com "
+                "integration in Settings."
+            )
+        if "duplicated order" in folded:
+            return _(
+                "This order already exists in Envia. Wait a moment and try "
+                "again, or open the order in Envia Shipping."
+            )
+        if "order ignored" in folded:
+            return _(
+                "Envia ignored this order (shipping method, logistics, or "
+                "marketplace rules). Check the order shipping method."
+            )
+        if "invalid order" in folded:
+            return _(
+                "Envia rejected this order as incomplete (address or "
+                "order number). Fix the order data and try again."
+            )
+        if "order not found" in folded:
+            return _(
+                "Envia could not find this order in the store. Confirm the "
+                "sales order is synced, then try again."
+            )
+        if "order already fulfilled" in folded:
+            return _(
+                "This order is already fulfilled on Envia. Unlink the "
+                "existing label in Envia Shipping, then try again."
+            )
+        if "currency not found" in folded:
+            return _(
+                "Envia shop has no currency configured. Set the shop "
+                "currency in Envia and try again."
+            )
+        if "label generation failed" in folded:
+            return _(
+                "The carrier could not generate the label. Check address, "
+                "package, and service, then try again."
+            )
+        if (
+            "invalid request payload" in folded
+            or "invalid request params" in folded
+            or "body data is invalid" in folded
+        ):
+            return _(
+                "The label request sent to Envia was invalid. Get a new "
+                "quote and try Generate again."
+            )
+        if folded in {"invalid operation.", "invalid operation"}:
+            return _(
+                "Envia could not complete this operation. Try again or "
+                "reconnect the integration."
             )
         if (
             "not enough money" in folded
@@ -137,17 +284,32 @@ class EnviaClient:
                 "Your Envia account does not have enough balance to create this "
                 "label. Add funds at Envia.com and try again."
             )
+        if "cannot read properties of undefined" in folded or "cannot read property" in folded:
+            return _(
+                "Envia could not read incomplete order data (name, quote, or "
+                "addresses). Fix the order and try again."
+            )
+        if "request failed with status code" in folded:
+            return _(
+                "The carrier rejected the label request. Check address, "
+                "package limits, phone, and service availability, then try again."
+            )
+        if "timeout" in folded and "exceeded" in folded:
+            return _(
+                "Envia or the carrier timed out. Wait a moment and try again."
+            )
+        if "econnrefused" in folded or "connection refused" in folded:
+            return _(
+                "Could not reach Envia or the carrier (network). Try again "
+                "in a moment."
+            )
         return text
 
     @staticmethod
     def _response_error_message(body, response) -> str:
-        raw = response.text
-        if isinstance(body, dict):
-            raw = body.get("message") or body.get("error") or response.text
-        elif isinstance(body, list) and body:
-            first = body[0]
-            if isinstance(first, dict):
-                raw = first.get("message") or first.get("error") or response.text
+        raw = EnviaClient.extract_api_error_raw(
+            body, fallback=getattr(response, "text", "") or ""
+        )
         return EnviaClient.humanize_api_message(raw)
 
     def _get(

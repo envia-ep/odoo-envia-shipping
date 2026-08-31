@@ -449,8 +449,18 @@ def get_envia_adapter(company):
             )
         )
     client = EnviaClient(company._envia_get_base_url(), token)
+    checkout_action = company.env.ref(
+        "envia.action_envia_open_checkout_settings",
+        raise_if_not_found=False,
+    )
+    label_action = company.env.ref(
+        "envia.action_envia_open_shipping_rules_settings",
+        raise_if_not_found=False,
+    )
     return EnviaOfficialAdapter(
         client,
         shop_id=shop_id,
         default_carriers=company.envia_default_carriers or "dhl,fedex,estafeta",
+        checkout_settings_action_id=checkout_action.id if checkout_action else None,
+        label_settings_action_id=label_action.id if label_action else None,
     )

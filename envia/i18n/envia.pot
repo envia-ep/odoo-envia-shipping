@@ -2537,6 +2537,15 @@ msgstr ""
 
 #. module: envia
 #. odoo-python
+#: code:addons/envia/services/envia_client.py:0
+msgid ""
+"No packages are available for the quoted service "
+"(already labeled, or missing a rate). Get a new quote or "
+"unlink existing Envia shipments, then try again."
+msgstr ""
+
+#. module: envia
+#. odoo-python
 #: code:addons/envia/wizards/envia_quote_wizard.py:0
 msgid "No pickup points returned near %(zip)s. Try another postal code."
 msgstr ""
@@ -3772,6 +3781,14 @@ msgid ""
 "The quote wizard opens with shipment details.\n"
 "                                            Adjust weight and dimensions if "
 "needed."
+msgstr ""
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_client.py:0
+msgid ""
+"The label request sent to Envia was invalid. Get a new "
+"quote and try Generate again."
 msgstr ""
 
 #. module: envia
