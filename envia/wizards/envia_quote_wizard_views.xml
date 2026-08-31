@@ -294,7 +294,7 @@
                         </field>
                     </div>
 
-                    <div class="o_envia_section" invisible="not show_service_rates">
+                    <div class="o_envia_section o_envia_rates_section" invisible="not show_service_rates">
                         <div class="d-flex align-items-baseline justify-content-between gap-3 mb-2">
                             <div class="o_envia_section_title mb-0">Rates</div>
                             <div class="text-success small" invisible="not cheapest_rate_label">

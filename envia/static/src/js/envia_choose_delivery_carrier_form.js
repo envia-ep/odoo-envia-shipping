@@ -1,6 +1,6 @@
 /** @odoo-module **/
 
-import { onMounted, onWillUnmount } from "@odoo/owl";
+import { onMounted, onWillUnmount, useEffect } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { FormController } from "@web/views/form/form_controller";
@@ -17,10 +17,89 @@ export class EnviaChooseDeliveryCarrierController extends FormController {
         };
         onMounted(() => {
             this.rootRef.el?.addEventListener("click", this._optionClickHandler, true);
+            if (this.model.root.data.envia_show_service_rates) {
+                this._scrollToRatesSection();
+            }
         });
         onWillUnmount(() => {
             this.rootRef.el?.removeEventListener("click", this._optionClickHandler, true);
         });
+
+        // After Get rate, rates appear on the same dialog — scroll to the list.
+        useEffect(
+            () => {
+                if (this.model.root.data.envia_show_service_rates) {
+                    this._scrollToRatesSection();
+                }
+            },
+            () => {
+                const lines = this.model.root.data.envia_service_line_ids;
+                const count = Array.isArray(lines)
+                    ? lines.length
+                    : lines?.count || lines?.records?.length || 0;
+                return [
+                    this._getWizardId(this.model.root),
+                    count,
+                    this.model.root.data.envia_show_service_rates,
+                ];
+            }
+        );
+    }
+
+    async afterExecuteActionButton(clickParams) {
+        await super.afterExecuteActionButton?.(clickParams);
+        if (clickParams.name !== "update_price") {
+            return;
+        }
+        await this._safeReloadForm();
+        this._scrollToRatesSection();
+    }
+
+    _scrollToRatesSection() {
+        const findTarget = (root) =>
+            root.querySelector(".o_envia_rates_section") ||
+            root.querySelector(
+                ".o_field_widget[name='envia_service_line_ids'], .o_field_widget[name='service_line_ids']"
+            );
+
+        const scrollToTarget = (target) => {
+            // Odoo/Bootstrap: long form wizards scroll on .modal (or .modal-body).
+            const parents = [
+                target.closest(".modal-body"),
+                target.closest(".modal"),
+                target.closest(".o_dialog"),
+            ].filter(Boolean);
+            for (const parent of parents) {
+                if (parent.scrollHeight <= parent.clientHeight + 1) {
+                    continue;
+                }
+                const top =
+                    target.getBoundingClientRect().top -
+                    parent.getBoundingClientRect().top +
+                    parent.scrollTop -
+                    8;
+                parent.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+                return;
+            }
+            // Fallback: browser picks the real scrollport (modal / page).
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+        };
+
+        const attempt = (n = 0) => {
+            if (this.__owl__?.isDestroyed) {
+                return;
+            }
+            const root = this.rootRef.el;
+            const target = root && findTarget(root);
+            if (!target) {
+                if (n < 30) {
+                    setTimeout(() => attempt(n + 1), 50);
+                }
+                return;
+            }
+            scrollToTarget(target);
+        };
+        setTimeout(() => attempt(), 100);
     }
 
     async _applyServerAction(action) {

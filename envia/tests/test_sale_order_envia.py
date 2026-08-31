@@ -349,6 +349,41 @@ class TestSaleOrderEnvia(TransactionCase):
         self.assertIn("enable Checkout", str(error.exception))
         self.assertIn("carriers you want to quote", str(error.exception))
 
+    def test_quote_checkout_meta_error_redirects_to_envia_settings(self):
+        from unittest.mock import MagicMock
+
+        from odoo.addons.envia.services.dto import QuoteRequest
+        from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
+        from odoo.exceptions import RedirectWarning
+
+        request = QuoteRequest(
+            origin_postal_code="67192",
+            origin_country="MX",
+            destination_postal_code="03100",
+            destination_country="MX",
+            weight=1.0,
+            content="Package",
+        )
+        client = MagicMock()
+        client._post.return_value = {
+            "meta": "error",
+            "error": {
+                "code": 1365,
+                "description": "Invalid Option",
+                "message": "Error processing request no carriers enabled",
+            },
+        }
+        action = self.env.ref("envia.action_envia_open_checkout_settings")
+        adapter = EnviaOfficialAdapter(
+            client,
+            shop_id="34174",
+            checkout_settings_action_id=action.id,
+        )
+        with self.assertRaises(RedirectWarning) as error:
+            adapter.quote(request)
+        self.assertEqual(error.exception.args[1], action.id)
+        self.assertIn("enable Checkout", str(error.exception.args[0]))
+
     def test_quote_filters_services_by_drop_off(self):
         from unittest.mock import MagicMock
 

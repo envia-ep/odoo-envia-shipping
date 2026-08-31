@@ -201,6 +201,24 @@ class StockPicking(models.Model):
             return self.action_open_envia_quote_wizard()
         return self.send_to_shipper()
 
+    def _envia_has_unlink_targets(self):
+        """True when Odoo can DELETE the Envia fulfillment (needs order + shipment id)."""
+        self.ensure_one()
+        sale = self.sale_id
+        so_order_id = (sale.envia_external_order_id or "").strip() if sale else ""
+        shipments = self.envia_shipment_ids
+        if sale:
+            shipments |= sale.envia_shipment_ids
+        return bool(
+            shipments.filtered(
+                lambda item: (item.external_shipment_id or "").strip()
+                and (
+                    (item.external_order_id or "").strip()
+                    or so_order_id
+                )
+            )
+        )
+
     def action_envia_replace_label(self):
         """Clear local label link and reopen rates; Envia unlink runs on Generate."""
         self.ensure_one()
@@ -208,6 +226,17 @@ class StockPicking(models.Model):
             raise UserError(_("This transfer is not using Envia.com."))
         if not self._envia_has_active_label():
             raise UserError(_("No Envia label is linked to this delivery."))
+        if not self._envia_has_unlink_targets():
+            raise UserError(
+                _(
+                    "Cannot replace this Envia label from Odoo: the Envia "
+                    "orderId/shipmentId was not saved (often after a timeout when "
+                    "the label was already created on Envia). "
+                    "Unlink the label in Envia Shipping, then either generate "
+                    "the new label there, or clear the tracking on this delivery "
+                    "and generate again from Odoo."
+                )
+            )
         self._envia_unlink_label()
         quotes = self.envia_quote_ids
         if self.sale_id:

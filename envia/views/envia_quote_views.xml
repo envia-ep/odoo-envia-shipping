@@ -133,6 +133,34 @@
         <field name="context">{'create': False}</field>
     </record>
 
+    <record id="action_envia_open_checkout_settings" model="ir.actions.server">
+        <field name="name">Open Envia Checkout Settings</field>
+        <field name="model_id" ref="base.model_res_company"/>
+        <field name="state">code</field>
+        <field name="code">action = env.company.action_envia_open_checkout_settings()</field>
+    </record>
+
+    <record id="action_envia_checkout_settings_dashboard" model="ir.actions.server">
+        <field name="name">Envia Checkout Settings Dashboard</field>
+        <field name="model_id" ref="base.model_res_company"/>
+        <field name="state">code</field>
+        <field name="code">action = env.company.action_envia_checkout_settings_dashboard()</field>
+    </record>
+
+    <record id="action_envia_open_shipping_rules_settings" model="ir.actions.server">
+        <field name="name">Open Envia Shipping Rules Settings</field>
+        <field name="model_id" ref="base.model_res_company"/>
+        <field name="state">code</field>
+        <field name="code">action = env.company.action_envia_open_shipping_rules_settings()</field>
+    </record>
+
+    <record id="action_envia_shipping_rules_settings_dashboard" model="ir.actions.server">
+        <field name="name">Envia Shipping Rules Settings Dashboard</field>
+        <field name="model_id" ref="base.model_res_company"/>
+        <field name="state">code</field>
+        <field name="code">action = env.company.action_envia_shipping_rules_settings_dashboard()</field>
+    </record>
+
     <record id="action_envia_app_entry" model="ir.actions.server">
         <field name="name">Envia.com</field>
         <field name="model_id" ref="model_envia_plugin_connect_wizard"/>

@@ -1,14 +1,9 @@
-import logging
-
-from odoo.tools import config
 from psycopg2 import sql
 
 from .services.envia_plugin_setup import queue_pending_setup
 
-_logger = logging.getLogger(__name__)
 LEGACY_MODULE_NAME = "envia_shipping"
 MODULE_NAME = "envia"
-HTTP_BRIDGE_MODULE = "envia_http"
 _ENVIA_PRODUCT_TEMPLATE_FIELDS = (
     "dimensional_uom_id",
     "product_length",
@@ -16,30 +11,6 @@ _ENVIA_PRODUCT_TEMPLATE_FIELDS = (
     "product_height",
     "envia_volumetric_weight",
 )
-
-
-def _http_bridge_server_wide_modules():
-    return config.get("server_wide_modules") or ["web", "base", "web"]
-
-
-def warn_if_http_bridge_missing(*, at_install: bool = False) -> bool:
-    """Return True when envia_http is listed in server_wide_modules."""
-    if HTTP_BRIDGE_MODULE in _http_bridge_server_wide_modules():
-        return True
-    message = (
-        "Add %r to server_wide_modules in odoo.conf (local and production) so "
-        "POST /envia/integration/callback works without X-Odoo-Database. "
-        "Example: server_wide_modules = web,base,%s. "
-        "Then restart Odoo and verify with: "
-        "curl -X POST https://<your-domain>/envia/integration/callback"
-    )
-    log = _logger.error if at_install else _logger.warning
-    log(message, HTTP_BRIDGE_MODULE, HTTP_BRIDGE_MODULE)
-    return False
-
-
-def post_load():
-    warn_if_http_bridge_missing()
 
 
 def _drop_legacy_branch_carrier_columns(cr):
@@ -207,7 +178,6 @@ def pre_init_hook(env):
 
 
 def post_init_hook(env):
-    warn_if_http_bridge_missing(at_install=True)
     company = env.ref("base.main_company")
     if not company._envia_is_shipping_api_configured():
         queue_pending_setup(env)
