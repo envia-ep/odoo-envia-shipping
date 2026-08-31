@@ -8,7 +8,7 @@
             <xpath expr="//form" position="attributes">
                 <attribute name="js_class">envia_choose_delivery_carrier_form</attribute>
             </xpath>
-            <xpath expr="//div[contains(@class, 'alert-info')][@role='alert']" position="before">
+            <xpath expr="//div[hasclass('alert-info')][@role='alert']" position="before">
                 <field name="envia_wizard_id" invisible="1"/>
                 <field name="envia_is_sandbox" invisible="1"/>
                 <field name="envia_can_get_rates" invisible="1"/>

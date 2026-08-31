@@ -7,7 +7,7 @@ from odoo.tests.common import TransactionCase
 
 @tagged("post_install", "-at_install")
 class TestChooseDeliveryApply(TransactionCase):
-    def test_apply_selected_envia_quote_applies_delivery_line(self):
+    def _create_order_quote_wizard(self, *, price):
         partner = self.env.company.partner_id
         product = self.env["product.product"].search([("sale_ok", "=", True)], limit=1)
         order = self.env["sale.order"].create(
@@ -22,7 +22,9 @@ class TestChooseDeliveryApply(TransactionCase):
             {
                 "sale_order_id": order.id,
                 "origin_postal_code": "67192",
+                "origin_country": "MX",
                 "destination_postal_code": "03100",
+                "destination_country": "MX",
                 "weight": 1.0,
                 "content": "Test",
                 "state": "quoted",
@@ -34,12 +36,28 @@ class TestChooseDeliveryApply(TransactionCase):
                 "service_id": "estafeta:ground",
                 "carrier": "estafeta",
                 "service_name": "Estafeta Terrestre",
-                "price": 123.45,
+                "price": price,
                 "is_selected": True,
             }
         )
         quote.selected_service_id = service.id
-        wizard = self.env["envia.quote.wizard"].create({"sale_order_id": order.id})
+        wizard = self.env["envia.quote.wizard"].create(
+            {"sale_order_id": order.id, "quote_id": quote.id}
+        )
+        self.env["envia.quote.wizard.service"].create(
+            {
+                "wizard_id": wizard.id,
+                "service_id": "estafeta:ground",
+                "carrier": "estafeta",
+                "service_name": "Estafeta Terrestre",
+                "price": price,
+                "is_selected": True,
+            }
+        )
+        return order, wizard
+
+    def test_apply_selected_envia_quote_applies_delivery_line(self):
+        order, wizard = self._create_order_quote_wizard(price=123.45)
         with patch(
             "odoo.addons.envia.wizards.envia_quote_wizard.EnviaQuoteWizard._perform_get_quote",
             return_value=False,
@@ -50,50 +68,7 @@ class TestChooseDeliveryApply(TransactionCase):
         self.assertEqual(shipping_line.price_unit, 123.45)
 
     def test_apply_does_not_requote_when_service_already_selected(self):
-        partner = self.env.company.partner_id
-        product = self.env["product.product"].search([("sale_ok", "=", True)], limit=1)
-        order = self.env["sale.order"].create(
-            {
-                "partner_id": partner.id,
-                "partner_invoice_id": partner.id,
-                "partner_shipping_id": partner.id,
-                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
-            }
-        )
-        quote = self.env["envia.quote"].create(
-            {
-                "sale_order_id": order.id,
-                "origin_postal_code": "67192",
-                "destination_postal_code": "03100",
-                "weight": 1.0,
-                "content": "Test",
-                "state": "quoted",
-            }
-        )
-        service = self.env["envia.quote.service"].create(
-            {
-                "quote_id": quote.id,
-                "service_id": "estafeta:ground",
-                "carrier": "estafeta",
-                "service_name": "Estafeta Terrestre",
-                "price": 99.0,
-                "is_selected": True,
-            }
-        )
-        quote.selected_service_id = service.id
-        wizard = self.env["envia.quote.wizard"].create(
-            {"sale_order_id": order.id, "quote_id": quote.id}
-        )
-        self.env["envia.quote.wizard.service"].create(
-            {
-                "wizard_id": wizard.id,
-                "service_id": "estafeta:ground",
-                "carrier": "estafeta",
-                "service_name": "Estafeta Terrestre",
-                "price": 99.0,
-                "is_selected": True,
-            }
-        )
+        order, wizard = self._create_order_quote_wizard(price=99.0)
         with patch(
             "odoo.addons.envia.wizards.envia_quote_wizard.EnviaQuoteWizard._perform_get_quote",
             side_effect=AssertionError("must not re-quote"),
@@ -104,59 +79,23 @@ class TestChooseDeliveryApply(TransactionCase):
         self.assertEqual(shipping_line.price_unit, 99.0)
 
     def test_generate_label_applies_shipping_cost(self):
-        partner = self.env.company.partner_id
-        product = self.env["product.product"].search([("sale_ok", "=", True)], limit=1)
-        order = self.env["sale.order"].create(
-            {
-                "partner_id": partner.id,
-                "partner_invoice_id": partner.id,
-                "partner_shipping_id": partner.id,
-                "order_line": [(0, 0, {"product_id": product.id, "product_uom_qty": 1.0})],
-            }
-        )
-        quote = self.env["envia.quote"].create(
-            {
-                "sale_order_id": order.id,
-                "origin_postal_code": "67192",
-                "destination_postal_code": "03100",
-                "weight": 1.0,
-                "content": "Test",
-                "state": "quoted",
-            }
-        )
-        service = self.env["envia.quote.service"].create(
-            {
-                "quote_id": quote.id,
-                "service_id": "estafeta:ground",
-                "carrier": "estafeta",
-                "service_name": "Estafeta Terrestre",
-                "price": 77.0,
-                "is_selected": True,
-            }
-        )
-        quote.selected_service_id = service.id
-        wizard = self.env["envia.quote.wizard"].create(
-            {"sale_order_id": order.id, "quote_id": quote.id}
-        )
-        self.env["envia.quote.wizard.service"].create(
-            {
-                "wizard_id": wizard.id,
-                "service_id": "estafeta:ground",
-                "carrier": "estafeta",
-                "service_name": "Estafeta Terrestre",
-                "price": 77.0,
-                "is_selected": True,
-            }
-        )
+        """Confirm applies shipping, then asks to open the delivery for the label."""
+        order, wizard = self._create_order_quote_wizard(price=77.0)
         with patch(
             "odoo.addons.envia.wizards.envia_quote_wizard.EnviaQuoteWizard._perform_get_quote",
             side_effect=AssertionError("must not re-quote"),
         ):
-            with self.assertRaises(UserError):
-                wizard.action_confirm_selection()
+            wizard.action_apply_shipping_to_order()
         shipping_line = order.order_line.filtered("is_delivery")
         self.assertEqual(len(shipping_line), 1)
         self.assertEqual(shipping_line.price_unit, 77.0)
+        with patch.object(
+            type(wizard), "_finalize_quote_selection"
+        ), patch.object(type(wizard), "_apply_shipping_cost_to_order"):
+            with self.assertRaises(UserError) as error:
+                wizard.action_confirm_selection()
+        self.assertIn("Generate Envia Label", str(error.exception))
+
 
     def test_apply_shipping_on_confirmed_sale_order(self):
         partner = self.env.company.partner_id
