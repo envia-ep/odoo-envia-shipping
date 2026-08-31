@@ -23,18 +23,21 @@ def _http_bridge_server_wide_modules():
 
 
 def warn_if_http_bridge_missing(*, at_install: bool = False) -> bool:
-    """Return True when envia_http is listed in server_wide_modules."""
+    """Return True when envia_http is listed in server_wide_modules.
+
+    Optional on Odoo.sh / single-DB: ``envia`` routes are enough.
+    Recommended for multi-database on-premise nodb OAuth callbacks.
+    """
     if HTTP_BRIDGE_MODULE in _http_bridge_server_wide_modules():
         return True
-    message = (
-        "Add %r to server_wide_modules in odoo.conf (local and production) so "
-        "POST /envia/integration/callback works without X-Odoo-Database. "
-        "Example: server_wide_modules = web,base,%s. "
-        "Then restart Odoo and verify with: "
-        "curl -X POST https://<your-domain>/envia/integration/callback"
+    # ponytail: info only — bridge is optional for Apps / Odoo.sh installs
+    _logger.info(
+        "Optional on-premise: add %r to server_wide_modules for multi-database "
+        "nodb OAuth (not required on Odoo.sh). Example: "
+        "server_wide_modules = web,base,%s",
+        HTTP_BRIDGE_MODULE,
+        HTTP_BRIDGE_MODULE,
     )
-    log = _logger.error if at_install else _logger.warning
-    log(message, HTTP_BRIDGE_MODULE, HTTP_BRIDGE_MODULE)
     return False
 
 

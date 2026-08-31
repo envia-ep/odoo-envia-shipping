@@ -1,10 +1,19 @@
 # Envia HTTP Bridge
 
-Server-wide Odoo module that exposes Envia integration endpoints **before** a database is selected. Install it and add it to `server_wide_modules` so Envia.com can reach Odoo during OAuth setup and callbacks.
+**Optional** server-wide Odoo module for **multi-database on-premise** installs.
+Exposes Envia integration endpoints **before** a database is selected.
 
-## Installation
+On **Odoo.sh** (and other single-database setups), install only `envia` — this
+bridge is not required. `envia` no longer depends on `envia_http`.
 
-1. Put `envia` and `envia_http` on the Odoo addons path (same package).
+## When to use
+
+Use this module if Envia.com must call Odoo without `X-Odoo-Database` / before
+a DB is selected (typical multi-DB on-premise).
+
+## Installation (on-premise multi-DB)
+
+1. Put `envia` and `envia_http` on the same Odoo `addons_path`.
 2. Add this module to `server_wide_modules` in `odoo.conf`:
 
 ```ini
@@ -12,9 +21,7 @@ server_wide_modules = web,base,envia_http
 ```
 
 3. Restart Odoo.
-4. In Apps, install **Envia.com** (`envia`) only — Odoo installs `envia_http` and other dependencies automatically.
-
-The main `envia` module depends on `envia_http`, but the HTTP bridge must still be loaded server-wide for nodb routes to work. You do **not** need a separate Apps install for `envia_http`.
+4. Install `envia_http`, then install **Envia.com** (`envia`).
 
 ## Routes
 
@@ -26,14 +33,13 @@ The main `envia` module depends on `envia_http`, but the HTTP bridge must still 
 | `POST /xmlrpc/2/common` | XML-RPC common proxy for store validation |
 | `POST /xmlrpc/2/object` | XML-RPC object proxy for integration calls without a selected database |
 
-Each route delegates to the `envia` module when it is installed. If `envia` is missing from the addons path, the bridge returns HTTP 503.
+Each route delegates to the `envia` module when it is installed. If `envia` is
+missing from the addons path, the bridge returns HTTP 503.
 
 ## Verify
-
-After restart, a missing bridge is logged by the `envia` module. You can also probe the callback route:
 
 ```bash
 curl -X POST https://<your-domain>/envia/integration/callback
 ```
 
-Expect a JSON error response (not 404) when the bridge is loaded.
+Expect a JSON error response (not 404) when the bridge is loaded server-wide.
