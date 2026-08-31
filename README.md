@@ -75,4 +75,4 @@ Envia.com
 
 ## License
 
-Proprietary — © 2026 Envia.com. All rights reserved.
+LGPL-3 — © 2026 Envia.com.
