@@ -508,7 +508,8 @@ class ChooseDeliveryCarrier(models.TransientModel):
         # Keep branches when ocurre is in use; branch selection still locks carrier.
         quote_wizard.action_get_quote(clear_branch_lines=False)
         self._sync_delivery_price_from_envia()
-        return self._envia_reopen_action()
+        # Stay on the same dialog (False would close it in Odoo 19). JS reloads + scrolls.
+        return {"type": "ir.actions.client", "tag": "envia_wizard_noop"}
 
     def action_envia_select_service(self, service_id=None):
         self.ensure_one()
