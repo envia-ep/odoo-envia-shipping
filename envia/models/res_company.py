@@ -2,7 +2,11 @@ from odoo import _, api, fields, models
 
 from odoo.exceptions import UserError
 
-from ..const import get_envia_dashboard_embed_url
+from ..const import (
+    get_envia_checkout_settings_url,
+    get_envia_dashboard_embed_url,
+    get_envia_shipping_rules_settings_url,
+)
 from ..services.envia_config import (
     get_envia_api_base_url,
     get_envia_queries_base_url,
@@ -412,6 +416,72 @@ class ResCompany(models.Model):
             [("code", "=", self._envia_default_branch_carrier())],
             limit=1,
         ).id
+
+    def _envia_require_shop_connected(self):
+        """Return (company, shop_id) or raise if shop/OAuth is missing."""
+        company = self[:1] or self.env.company
+        shop_id = (company.envia_shop_id or "").strip()
+        if not shop_id:
+            raise UserError(
+                _(
+                    "Envia Shop ID is missing. Open Settings > Envia.com and complete "
+                    "the integration connection with Envia.com."
+                )
+            )
+        if not company.envia_oauth_connected:
+            raise UserError(
+                _(
+                    "Connect your store with Envia.com before opening Envia settings."
+                )
+            )
+        return company, shop_id
+
+    def _envia_open_settings_dashboard_tab(self, dashboard_xmlid: str):
+        """New browser tab → Odoo Envia dashboard action (keeps current screen)."""
+        company, _shop_id = self._envia_require_shop_connected()
+        base = (
+            self.env["ir.config_parameter"].sudo().get_param("web.base.url") or ""
+        ).rstrip("/")
+        dashboard_action = self.env.ref(dashboard_xmlid)
+        return {
+            "type": "ir.actions.act_url",
+            "url": f"{base}/web#action={dashboard_action.id}&cids={company.id}",
+            "target": "new",
+        }
+
+    def _envia_settings_dashboard_action(self, settings_url: str):
+        action = self.env["ir.actions.actions"]._for_xml_id(
+            "envia.action_envia_dashboard_client"
+        )
+        action["params"] = {"url": settings_url}
+        action["target"] = "current"
+        return action
+
+    def action_envia_open_checkout_settings(self):
+        """Open a new browser tab on the Envia dashboard (checkout settings embed)."""
+        return self._envia_open_settings_dashboard_tab(
+            "envia.action_envia_checkout_settings_dashboard"
+        )
+
+    def action_envia_checkout_settings_dashboard(self):
+        """Load the Envia dashboard iframe on the checkout settings deep-link."""
+        _company, shop_id = self._envia_require_shop_connected()
+        return self._envia_settings_dashboard_action(
+            get_envia_checkout_settings_url(shop_id)
+        )
+
+    def action_envia_open_shipping_rules_settings(self):
+        """Open a new browser tab on Envia shipping rules (label generation)."""
+        return self._envia_open_settings_dashboard_tab(
+            "envia.action_envia_shipping_rules_settings_dashboard"
+        )
+
+    def action_envia_shipping_rules_settings_dashboard(self):
+        """Load the Envia dashboard iframe on the shipping-rules deep-link."""
+        _company, shop_id = self._envia_require_shop_connected()
+        return self._envia_settings_dashboard_action(
+            get_envia_shipping_rules_settings_url(shop_id)
+        )
 
     @api.model
     def action_open_envia_dashboard(self):

@@ -1,29 +1,23 @@
 # Envia.com Quote and Shipping
 
-Odoo 19 addons package that connects your store with [Envia.com](https://envia.com)
+Odoo 19 addon that connects your store with [Envia.com](https://envia.com)
 for live carrier rates on sales orders (native **Add shipping** flow).
 
 ## Description
 
-The package contains two installable addons that must stay on the same
-`addons_path`:
-
 | Technical name | Display name | Role |
 | --- | --- | --- |
 | `envia` | Envia.com Quote and Shipping | Main application: UI, settings, OAuth wizards, quotes, and `delivery.carrier` rates. |
-| `envia_http` | Envia HTTP Bridge | Hidden technical bridge: HTTP/RPC entry points loaded **before** a database is selected. |
 
-`envia` depends on `envia_http`. From Apps, install only **Envia.com** (`envia`);
-Odoo installs `envia_http` and other Python dependencies automatically.
-That is **not** enough for OAuth: a server administrator must also list
-`envia_http` in `server_wide_modules` and restart Odoo so nodb routes exist.
+From Apps / Odoo.sh, install only **Envia.com** (`envia`). Standard Odoo
+dependencies install automatically.
 
 ### `envia`
 
 - **Category:** Inventory/Delivery
 - **Application:** yes (`application: True`)
 - **Depends:** `base`, `mail`, `onboarding`, `sale`, `stock`, `sale_stock`,
-  `delivery`, `website_sale`, `envia_http`
+  `delivery`, `website_sale` (and related delivery apps)
 
 **Features**
 
@@ -37,35 +31,17 @@ That is **not** enough for OAuth: a server administrator must also list
 
 Label creation and tracking are **not** included in this version.
 
-### `envia_http`
-
-- **Category:** Hidden
-- **Application:** no
-- **Depends:** `web`
-- **Load mode:** must appear in `server_wide_modules` (see Installation)
-
-Exposes Envia integration endpoints before a database is selected. Routes
-delegate to `envia` when that module is installed; otherwise they return HTTP
-503. Full route list and verification steps:
-[`envia_http/README.md`](envia_http/README.md).
-
 ## Installation
 
-1. Put this repository root on the Odoo `addons_path`:
+### Odoo.sh / Apps Store
 
-   ```
-   <repository root>/
-   ├── envia/
-   └── envia_http/
-   ```
+1. Use **Deploy on Odoo.sh** from Apps (or put this repo on the project git).
+2. Update Apps List → install **Envia.com** (`envia`) only.
 
-2. In `odoo.conf`, add the HTTP bridge to `server_wide_modules` and restart Odoo:
+### On-premise
 
-   ```ini
-   server_wide_modules = web,base,envia_http
-   ```
-
-3. In Apps, install **Envia.com** (`envia`) only.
+1. Put `envia/` on the Odoo `addons_path`.
+2. Install **Envia.com** (`envia`) from Apps.
 
 ## Configuration
 
@@ -91,7 +67,7 @@ variables (see `docker-compose.yml`).
 | --- | --- |
 | Odoo 19 on-premise (Community / Enterprise) | Yes |
 | Odoo.sh | Yes |
-| Odoo Online (odoo.com SaaS) | No — requires `server_wide_modules` / custom addons |
+| Odoo Online (odoo.com SaaS) | No — no custom addons |
 
 ## Authors
 

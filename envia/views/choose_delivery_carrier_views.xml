@@ -277,7 +277,7 @@
                     </field>
                 </div>
 
-                <div class="o_envia_section"
+                <div class="o_envia_section o_envia_rates_section"
                      invisible="not envia_show_service_rates and not envia_rates_feedback">
                     <div class="d-flex align-items-baseline justify-content-between gap-3 mb-2">
                         <div class="o_envia_section_title mb-0">Rates</div>

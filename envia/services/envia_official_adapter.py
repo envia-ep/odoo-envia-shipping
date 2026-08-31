@@ -5,7 +5,7 @@ import logging
 import re
 
 from odoo import _
-from odoo.exceptions import UserError
+from odoo.exceptions import RedirectWarning, UserError
 
 from .dto import (
     AdditionalService,
@@ -67,6 +67,8 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         *,
         shop_id: str,
         default_carriers: str = "dhl,fedex,estafeta",
+        checkout_settings_action_id: int | None = None,
+        label_settings_action_id: int | None = None,
     ) -> None:
         self.client = client
         self.shop_id = (shop_id or "").strip()
@@ -75,6 +77,8 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             for carrier in default_carriers.split(",")
             if carrier.strip()
         ]
+        self.checkout_settings_action_id = checkout_settings_action_id
+        self.label_settings_action_id = label_settings_action_id
 
     def quote(self, request: QuoteRequest) -> QuoteResponse:
         if not self.shop_id:
@@ -90,10 +94,17 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         checkout_error = EnviaOfficialAdapter._checkout_error_message(body)
         if checkout_error:
             _logger.warning("Envia checkout meta error: %s", checkout_error)
-            raise UserError(_(
+            message = _(
                 "To get shipping quotes, enable Checkout in Envia.com "
                 "and select the carriers you want to quote."
-            ))
+            )
+            if self.checkout_settings_action_id:
+                raise RedirectWarning(
+                    message,
+                    self.checkout_settings_action_id,
+                    _("Open Envia"),
+                )
+            raise UserError(message)
 
         services = self._parse_checkout_rates(body, request)
         carriers = self._resolve_carriers(request.carriers)
@@ -370,16 +381,77 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             raise UserError(
                 _("Envia API token is missing. Check Settings > Envia Shipping.")
             )
-        payload: dict[str, Any] = {"id": str(order_id)}
-        if sid := EnviaOfficialAdapter._label_create_service_id(service_id):
-            payload["service_id"] = sid
-        ecommerce_base = get_envia_ecommerce_private_base_url()
-        client = EnviaClient(ecommerce_base, token)
-        body = client._post(
-            get_envia_label_create_path(self.shop_id),
+        sid = EnviaOfficialAdapter._label_create_service_id(service_id)
+        if not sid:
+            raise UserError(
+                _(
+                    "Envia service_id is missing. Get a new quote, select a rate, "
+                    "then try Generate Label again."
+                )
+            )
+        payload: dict[str, Any] = {"id": str(order_id), "service_id": sid}
+        _logger.info(
+            "Envia label/create shop_id=%s payload=%s",
+            self.shop_id,
             payload,
         )
-        return self._parse_label_create_response(body)
+        ecommerce_base = get_envia_ecommerce_private_base_url()
+        client = EnviaClient(ecommerce_base, token)
+        try:
+            body = client._post(
+                get_envia_label_create_path(self.shop_id),
+                payload,
+            )
+        except UserError as error:
+            self._reraise_label_settings_redirect(error)
+            raise
+        if isinstance(body, dict) and not body.get("status"):
+            raw = EnviaOfficialAdapter._label_create_error_raw(body)
+            if (
+                EnviaOfficialAdapter._raw_is_label_feature_disabled(raw)
+                and self.label_settings_action_id
+            ):
+                raise RedirectWarning(
+                    EnviaClient.humanize_api_message(raw),
+                    self.label_settings_action_id,
+                    _("Open Envia"),
+                )
+        try:
+            return self._parse_label_create_response(body)
+        except UserError as error:
+            self._reraise_label_settings_redirect(error)
+            raise
+
+    @staticmethod
+    def _raw_is_label_feature_disabled(raw) -> bool:
+        if isinstance(raw, (list, tuple)):
+            text = "\n".join(
+                str(part) for part in raw if part not in (None, False, "")
+            )
+        else:
+            text = str(raw or "")
+        return "feature not enabled" in text.casefold()
+
+    def _reraise_label_settings_redirect(self, error: UserError) -> None:
+        """Offer Envia shipping-rules settings when label generation is disabled."""
+        if not self.label_settings_action_id:
+            return
+        message = str(error.args[0] if error.args else error)
+        folded = message.casefold()
+        # Match EN humanized, ES translation, and raw API phrase.
+        markers = (
+            "label generation from the store",
+            "generación de etiquetas desde la tienda",
+            "generacion de etiquetas desde la tienda",
+            "feature not enabled",
+        )
+        if not any(marker in folded for marker in markers):
+            return
+        raise RedirectWarning(
+            message,
+            self.label_settings_action_id,
+            _("Open Envia"),
+        ) from error
 
     @staticmethod
     def _label_create_service_id(service_id: int | str | None) -> int | None:
@@ -392,16 +464,30 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         return value or None
 
     @staticmethod
+    def _label_create_error_raw(body: dict[str, Any]):
+        raw = EnviaClient.extract_api_error_raw(body)
+        return raw if raw not in (None, False, "") else body
+
+    @staticmethod
+    def _raise_label_create_failure(raw) -> None:
+        message = EnviaClient.humanize_api_message(raw)
+        if isinstance(raw, (list, tuple)):
+            raw_text = "\n".join(str(part) for part in raw if part not in (None, False, ""))
+        else:
+            raw_text = str(raw or "").strip()
+        # Known API phrases become a full UX sentence — do not prefix.
+        if message != raw_text:
+            raise UserError(message)
+        raise UserError(_("Envia did not generate a label: %s") % message)
+
+    @staticmethod
     def _parse_label_create_response(body: dict[str, Any]) -> CreateShipmentResponse:
         if not isinstance(body, dict):
             raise UserError(_("Envia label/create returned an invalid response."))
         if not body.get("status"):
-            raw = body.get("message") or body.get("error") or body
-            message = EnviaClient.humanize_api_message(raw)
-            # Known API phrases become a full UX sentence — do not prefix.
-            if message != str(raw or "").strip():
-                raise UserError(message)
-            raise UserError(_("Envia did not generate a label: %s") % message)
+            EnviaOfficialAdapter._raise_label_create_failure(
+                EnviaOfficialAdapter._label_create_error_raw(body)
+            )
         data = body.get("data") or {}
         labels = data.get("labels") if isinstance(data, dict) else None
         if not isinstance(labels, list) or not labels:
@@ -416,8 +502,20 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         tracking_number = ",".join(trackings)
         label_url = (first.get("label") or first.get("labelUrl") or "").strip() or None
         carrier = (first.get("carrier") or "").strip()
-        shipment_id = first.get("shipmentId") or first.get("folio") or ""
-        order_id = first.get("orderId") or first.get("order_id") or ""
+        shipment_id = (
+            first.get("shipmentId")
+            or first.get("folio")
+            or (data.get("shipmentId") if isinstance(data, dict) else None)
+            or (data.get("shipment_id") if isinstance(data, dict) else None)
+            or ""
+        )
+        order_id = (
+            first.get("orderId")
+            or first.get("order_id")
+            or (data.get("orderId") if isinstance(data, dict) else None)
+            or (data.get("order_id") if isinstance(data, dict) else None)
+            or ""
+        )
         total_price = first.get("totalPrice")
         if total_price in (None, ""):
             total_price = first.get("price")
@@ -809,6 +907,21 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         return None
 
     @staticmethod
+    def _checkout_numeric_service_id(rate: dict[str, Any]) -> int | None:
+        """Envia label/create needs the numeric ``serviceId``, not the service code."""
+        for key in ("serviceId", "service_id"):
+            value = rate.get(key)
+            if value in (None, False, ""):
+                continue
+            try:
+                numeric = int(value)
+            except (TypeError, ValueError):
+                continue
+            if numeric:
+                return numeric
+        return None
+
+    @staticmethod
     def _parse_checkout_rates(
         body: dict[str, Any] | list[Any],
         request: QuoteRequest,
@@ -826,8 +939,16 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
                 rate,
                 "service",
                 "serviceCode",
-                "service_id",
-            ) or index
+            )
+            if service_code in (None, False, ""):
+                # Only fall back to service_id when it is a non-numeric code.
+                raw_service_id = rate.get("service_id")
+                if raw_service_id not in (None, False, "") and not str(
+                    raw_service_id
+                ).isdigit():
+                    service_code = raw_service_id
+                else:
+                    service_code = index
             drop_off = EnviaOfficialAdapter._checkout_rate_value(rate, "dropOff", "drop_off")
             price_value = EnviaOfficialAdapter._checkout_rate_value(
                 rate,
@@ -840,10 +961,8 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             services.append(
                 QuoteService(
                     service_id=f"{rate_carrier}:{service_code}",
-                    envia_service_id=EnviaOfficialAdapter._checkout_rate_value(
-                        rate,
-                        "serviceId",
-                        "service_id",
+                    envia_service_id=EnviaOfficialAdapter._checkout_numeric_service_id(
+                        rate
                     ),
                     carrier=str(rate_carrier),
                     carrier_name=EnviaOfficialAdapter._checkout_rate_value(

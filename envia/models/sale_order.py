@@ -166,12 +166,25 @@ class SaleOrder(models.Model):
         for order in self:
             shipment = order.envia_shipment_ids.filtered(lambda item: item._is_active())[:1]
             quote = order._get_active_envia_quote()
-            if shipment:
+            # Envia portal labels XML-RPC-write carrier_tracking_ref without envia.shipment.
+            tracked = order.picking_ids.filtered(
+                lambda picking: picking.carrier_id.delivery_type == "envia"
+                and (picking.carrier_tracking_ref or "").strip()
+            )[:1]
+            if shipment or tracked:
                 order.envia_status = "shipped"
                 order.envia_summary = _(
                     "Envia label created: %(tracking)s · %(carrier)s",
-                    tracking=shipment.tracking_number or shipment.name,
-                    carrier=shipment.carrier_name or shipment.carrier or _("Carrier"),
+                    tracking=(
+                        (shipment.tracking_number if shipment else False)
+                        or (tracked.carrier_tracking_ref if tracked else False)
+                        or (shipment.name if shipment else "")
+                    ),
+                    carrier=(
+                        (shipment.carrier_name or shipment.carrier)
+                        if shipment
+                        else (tracked.carrier_id.name or _("Carrier"))
+                    ),
                 )
             elif quote:
                 service = quote.selected_service_id

@@ -67,6 +67,68 @@ export class EnviaQuoteWizardController extends FormController {
                 ];
             }
         );
+
+        // Scroll to Rates when a quote populates service lines (Get Rates / auto-quote).
+        useEffect(
+            () => {
+                if (this._hasServiceLines(this.model.root)) {
+                    this._scrollToRatesSection();
+                }
+            },
+            () => {
+                const record = this.model.root;
+                const serviceLines = record.data.service_line_ids;
+                const serviceCount = Array.isArray(serviceLines)
+                    ? serviceLines.length
+                    : serviceLines?.count || 0;
+                return [record.data.quote_id, serviceCount];
+            }
+        );
+    }
+
+    _scrollToRatesSection() {
+        const findTarget = (root) =>
+            root.querySelector(".o_envia_rates_section") ||
+            root.querySelector(
+                ".o_field_widget[name='envia_service_line_ids'], .o_field_widget[name='service_line_ids']"
+            );
+
+        const scrollToTarget = (target) => {
+            const parents = [
+                target.closest(".modal-body"),
+                target.closest(".modal"),
+                target.closest(".o_dialog"),
+            ].filter(Boolean);
+            for (const parent of parents) {
+                if (parent.scrollHeight <= parent.clientHeight + 1) {
+                    continue;
+                }
+                const top =
+                    target.getBoundingClientRect().top -
+                    parent.getBoundingClientRect().top +
+                    parent.scrollTop -
+                    8;
+                parent.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+                return;
+            }
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+        };
+
+        const attempt = (n = 0) => {
+            if (this.__owl__?.isDestroyed) {
+                return;
+            }
+            const root = this.rootRef.el;
+            const target = root && findTarget(root);
+            if (!target) {
+                if (n < 30) {
+                    setTimeout(() => attempt(n + 1), 50);
+                }
+                return;
+            }
+            scrollToTarget(target);
+        };
+        setTimeout(() => attempt(), 100);
     }
 
     _hasServiceLines(record) {
