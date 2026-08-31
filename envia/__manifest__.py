@@ -1,6 +1,6 @@
 {
     "name": "Envia.com Quote and Shipping",
-    "version": "19.0.2.1.0",
+    "version": "19.0.2.2.0",
     "category": "Inventory/Delivery",
     "summary": "The best shipping solution for your business. Connect to 150+ couriers worldwide for domestic and international shipments.",
     "description": """
@@ -18,15 +18,8 @@ Installation
 Install only **Envia.com** (``envia``) from Apps. Odoo installs standard
 module dependencies automatically (Sales, Inventory, Delivery, …).
 
-On **Odoo.sh** (typically one database) nothing else is required: Deploy from
-Apps, Update Apps List, then Install ``envia``. OAuth uses the routes shipped
-inside ``envia``.
-
-On **multi-database on-premise**, optionally install ``envia_http`` from the
-same package and add it to ``server_wide_modules`` so nodb callbacks work
-before a database is selected::
-
-    server_wide_modules = web,base,envia_http
+On **Odoo.sh**: Deploy from Apps, Update Apps List, then Install ``envia``.
+OAuth uses the HTTP routes shipped inside this module.
 
 Supported on **Odoo.sh** and **on-premise** (Community or Enterprise).
 Not compatible with standard **Odoo Online** (odoo.com SaaS).
@@ -117,6 +110,5 @@ credentials from Envia.com before release.
     "installable": True,
     "application": True,
     "post_init_hook": "post_init_hook",
-    "post_load": "post_load",
     "pre_init_hook": "pre_init_hook",
 }

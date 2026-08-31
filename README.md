@@ -1,6 +1,6 @@
 # Envia.com Quote and Shipping
 
-Odoo 19 addons package that connects your store with [Envia.com](https://envia.com)
+Odoo 19 addon that connects your store with [Envia.com](https://envia.com)
 for live carrier rates on sales orders (native **Add shipping** flow).
 
 ## Description
@@ -8,11 +8,9 @@ for live carrier rates on sales orders (native **Add shipping** flow).
 | Technical name | Display name | Role |
 | --- | --- | --- |
 | `envia` | Envia.com Quote and Shipping | Main application: UI, settings, OAuth wizards, quotes, and `delivery.carrier` rates. |
-| `envia_http` | Envia HTTP Bridge | **Optional** (on-premise multi-DB): nodb HTTP/RPC entry points before a database is selected. |
 
 From Apps / Odoo.sh, install only **Envia.com** (`envia`). Standard Odoo
-dependencies install automatically. `envia_http` is **not** required on
-Odoo.sh (single database).
+dependencies install automatically.
 
 ### `envia`
 
@@ -33,15 +31,6 @@ Odoo.sh (single database).
 
 Label creation and tracking are **not** included in this version.
 
-### `envia_http` (optional)
-
-- **Category:** Hidden
-- **Application:** no
-- **Depends:** `web`
-- **When:** multi-database on-premise only; list in `server_wide_modules`
-
-See [`envia_http/README.md`](envia_http/README.md).
-
 ## Installation
 
 ### Odoo.sh / Apps Store
@@ -49,21 +38,10 @@ See [`envia_http/README.md`](envia_http/README.md).
 1. Use **Deploy on Odoo.sh** from Apps (or put this repo on the project git).
 2. Update Apps List → install **Envia.com** (`envia`) only.
 
-### On-premise (single database)
+### On-premise
 
 1. Put `envia/` on the Odoo `addons_path`.
 2. Install **Envia.com** (`envia`) from Apps.
-
-### On-premise (multi-database)
-
-1. Put `envia/` and `envia_http/` on the same `addons_path`.
-2. In `odoo.conf`:
-
-   ```ini
-   server_wide_modules = web,base,envia_http
-   ```
-
-3. Restart Odoo, install `envia_http`, then install **Envia.com** (`envia`).
 
 ## Configuration
 
