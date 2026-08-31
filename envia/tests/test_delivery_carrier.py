@@ -2451,6 +2451,41 @@ class TestEnviaDeliveryCarrier(TransactionCase):
         self.assertEqual(quote.state, "used")
         self.assertTrue(picking._envia_has_label_url_message())
 
+    def test_sale_order_envia_status_shipped_from_picking_tracking(self):
+        """Portal label writes tracking on the picking → SO Status = Label created."""
+        quote = self.env["envia.quote"].create(
+            {
+                "sale_order_id": self.order.id,
+                "company_id": self.env.company.id,
+                "origin_postal_code": "06600",
+                "origin_country": "MX",
+                "destination_postal_code": "44100",
+                "destination_country": "MX",
+                "weight": 1.0,
+                "content": "Test",
+                "state": "quoted",
+            }
+        )
+        service = self.env["envia.quote.service"].create(
+            {
+                "quote_id": quote.id,
+                "service_id": "dhl:1",
+                "carrier": "dhl",
+                "carrier_name": "DHL",
+                "service_name": "express",
+                "price": 50.0,
+                "currency_name": self.order.currency_id.name,
+                "is_selected": True,
+            }
+        )
+        quote.selected_service_id = service
+        self.assertEqual(self.order.envia_status, "quoted")
+        picking = self._make_out_picking(carrier_tracking_ref="1ZWEBHOOK")
+        self.assertFalse(picking.envia_shipment_ids)
+        self.assertEqual(picking.envia_status, "shipped")
+        self.assertEqual(self.order.envia_status, "shipped")
+        self.assertIn("1ZWEBHOOK", self.order.envia_summary)
+
     def test_send_shipping_recovers_bookkeeping_when_tracking_exists(self):
         picking = self._make_out_picking(carrier_tracking_ref="2117041242")
         quote = self.env["envia.quote"].create(

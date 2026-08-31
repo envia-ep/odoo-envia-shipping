@@ -1616,6 +1616,40 @@ msgstr "Envia no generó una etiqueta: %s"
 
 #. module: envia
 #. odoo-python
+#: code:addons/envia/models/delivery_carrier.py:0
+msgid ""
+"Envia already has a label for this order, but Odoo "
+"has no Envia orderId/shipmentId to unlink it. "
+"Unlink the label in Envia Shipping, then either "
+"generate the new label there, or clear the tracking "
+"on this delivery and generate again from Odoo."
+msgstr ""
+"Envia ya tiene una etiqueta para este pedido, pero Odoo "
+"no tiene orderId/shipmentId de Envia para desvincularla. "
+"Desvincula la etiqueta en Envia Shipping y luego: genera "
+"la nueva etiqueta allá, o borra el rastreo en esta entrega "
+"y genera de nuevo desde Odoo."
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/models/stock_picking.py:0
+msgid ""
+"Cannot replace this Envia label from Odoo: the Envia "
+"orderId/shipmentId was not saved (often after a timeout when "
+"the label was already created on Envia). "
+"Unlink the label in Envia Shipping, then either generate "
+"the new label there, or clear the tracking on this delivery "
+"and generate again from Odoo."
+msgstr ""
+"No se puede reemplazar esta etiqueta Envia desde Odoo: no se "
+"guardó el orderId/shipmentId de Envia (suele pasar tras un timeout "
+"cuando la etiqueta ya se creó en Envia). "
+"Desvincula la etiqueta en Envia Shipping y luego: genera la "
+"nueva etiqueta allá, o borra el rastreo en esta entrega y "
+"genera de nuevo desde Odoo."
+
+#. module: envia
+#. odoo-python
 #: code:addons/envia/services/envia_client.py:0
 msgid ""
 "Turn on \"Label generation from the store\" in Envia for this shop, then try again."
@@ -2655,6 +2689,18 @@ msgstr "Sin vencimiento"
 #: code:addons/envia/models/envia_shipment.py:0
 msgid "No label is available for this shipment yet."
 msgstr "Aún no hay etiqueta disponible para este envío."
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_client.py:0
+msgid ""
+"No packages are available for the quoted service "
+"(already labeled, or missing a rate). Get a new quote or "
+"unlink existing Envia shipments, then try again."
+msgstr ""
+"No hay paquetes disponibles para el servicio cotizado "
+"(ya etiquetados, o falta una tarifa). Obtén una nueva cotización o "
+"desvincula los envíos Envia existentes e inténtalo de nuevo."
 
 #. module: envia
 #. odoo-python
@@ -3946,6 +3992,16 @@ msgstr ""
 "El asistente de cotización se abre con los detalles del envío.\n"
 "                                            Ajusta peso y dimensiones si es "
 "necesario."
+
+#. module: envia
+#. odoo-python
+#: code:addons/envia/services/envia_client.py:0
+msgid ""
+"The label request sent to Envia was invalid. Get a new "
+"quote and try Generate again."
+msgstr ""
+"La solicitud de etiqueta enviada a Envia no es válida. Obtén una nueva "
+"cotización e intenta Generar de nuevo."
 
 #. module: envia
 #. odoo-python

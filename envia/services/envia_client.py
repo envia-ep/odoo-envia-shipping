@@ -261,7 +261,11 @@ class EnviaClient:
                 "The carrier could not generate the label. Check address, "
                 "package, and service, then try again."
             )
-        if "invalid request payload" in folded or "invalid request params" in folded:
+        if (
+            "invalid request payload" in folded
+            or "invalid request params" in folded
+            or "body data is invalid" in folded
+        ):
             return _(
                 "The label request sent to Envia was invalid. Get a new "
                 "quote and try Generate again."

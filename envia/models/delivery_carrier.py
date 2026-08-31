@@ -113,10 +113,8 @@ class DeliveryCarrier(models.Model):
             if not self.env.context.get("envia_skip_dedicated_cursor"):
                 self.env.cr.commit()
             adapter = get_envia_adapter(picking.company_id)
-            envia_service_id = (
-                quote.selected_service_id.envia_service_id
-                or sale_order.envia_service_id
-                or picking.envia_service_id
+            envia_service_id = self._envia_resolve_label_service_id(
+                quote, sale_order, picking
             )
             try:
                 response = adapter.create_label_for_odoo_order(
@@ -135,10 +133,11 @@ class DeliveryCarrier(models.Model):
                 if not picking._envia_unlink_prior_fulfillments():
                     raise UserError(
                         _(
-                            "Envia reports the order is already fulfilled, but Odoo "
-                            "has no Envia orderId/shipmentId to unlink. "
-                            "Open the label in Envia Shipping, unlink it there, "
-                            "then try Generate again."
+                            "Envia already has a label for this order, but Odoo "
+                            "has no Envia orderId/shipmentId to unlink it. "
+                            "Unlink the label in Envia Shipping, then either "
+                            "generate the new label there, or clear the tracking "
+                            "on this delivery and generate again from Odoo."
                         )
                     ) from error
                 if not self.env.context.get("envia_skip_dedicated_cursor"):
@@ -146,8 +145,12 @@ class DeliveryCarrier(models.Model):
                 response = adapter.create_label_for_odoo_order(
                     sale_order.id, envia_service_id
                 )
-            # Commit Envios + Envia orderId outside this TX so a serialization
-            # retry (Envia XML-RPC vs Core picking write) can reuse them.
+            # Persist orderId/shipmentId immediately (SO + Envios). Envia may have
+            # already created the label; losing these IDs blocks Replace/unlink.
+            self._envia_persist_label_side_effects(picking, quote, response)
+            if not self.env.context.get("envia_skip_dedicated_cursor"):
+                self.env.cr.commit()
+            # Dedicated cursor still used for chatter/bookkeeping idempotency.
             self._envia_commit_label_side_effects(
                 picking_id=picking.id,
                 quote_id=quote.id,
@@ -167,6 +170,46 @@ class DeliveryCarrier(models.Model):
                 }
             )
         return result
+
+    @api.model
+    def _envia_resolve_label_service_id(self, quote, sale_order, picking):
+        """Numeric Envia ``service_id`` for label/create (required by the API)."""
+        from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
+
+        selected = quote.selected_service_id
+        if not selected:
+            selected = quote.service_ids.filtered("is_selected")[:1]
+        candidates = [
+            selected.envia_service_id if selected else False,
+            sale_order.envia_service_id,
+            picking.envia_service_id,
+            selected.service_id if selected else False,
+        ]
+        for candidate in candidates:
+            service_id = EnviaOfficialAdapter._label_create_service_id(candidate)
+            if service_id:
+                _logger.info(
+                    "Envia label/create resolved service_id=%s (order=%s picking=%s)",
+                    service_id,
+                    sale_order.id,
+                    picking.id,
+                )
+                return service_id
+        _logger.warning(
+            "Envia label/create missing service_id order=%s picking=%s "
+            "selected=%s so=%s picking_field=%s",
+            sale_order.id,
+            picking.id,
+            selected.envia_service_id if selected else None,
+            sale_order.envia_service_id,
+            picking.envia_service_id,
+        )
+        raise UserError(
+            _(
+                "Envia service_id is missing on the selected rate. "
+                "Get a new quote, select a carrier, then try Generate Label again."
+            )
+        )
 
     def _envia_commit_label_side_effects(self, *, picking_id, quote_id, response):
         """Commit shipment + Envia orderId in a dedicated cursor."""

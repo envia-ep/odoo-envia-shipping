@@ -325,6 +325,38 @@ class TestEnviaClient(TransactionCase):
             raise spanish
         self.assertEqual(error.exception.args[1], action.id)
 
+    def test_label_create_requires_numeric_service_id(self):
+        """label/create must not POST without Envia numeric service_id."""
+        from unittest.mock import MagicMock, patch
+
+        from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
+
+        adapter = EnviaOfficialAdapter(MagicMock(token="token"), shop_id="34084")
+        with patch(
+            "odoo.addons.envia.services.envia_official_adapter.EnviaClient._post"
+        ) as mock_post:
+            with self.assertRaises(UserError) as error:
+                adapter.create_label_for_odoo_order(42, service_id=False)
+            self.assertIn("service_id", str(error.exception).casefold())
+            mock_post.assert_not_called()
+
+            mock_post.return_value = {
+                "status": True,
+                "data": {
+                    "labels": [
+                        {
+                            "trackingNumber": "1Z",
+                            "label": "https://example.com/l.pdf",
+                            "carrier": "fedex",
+                            "shipmentId": "S1",
+                        }
+                    ]
+                },
+            }
+            adapter.create_label_for_odoo_order(42, service_id=442)
+            _path, payload = mock_post.call_args.args[:2]
+            self.assertEqual(payload, {"id": "42", "service_id": 442})
+
     def test_label_create_not_enough_money_asks_to_add_funds(self):
         with self.assertRaises(UserError) as error:
             EnviaOfficialAdapter._parse_label_create_response(
@@ -439,6 +471,11 @@ class TestEnviaClient(TransactionCase):
                 "Invalid request payload/params input",
                 ("request", "invalid"),
                 ("Invalid request payload",),
+            ),
+            (
+                "424 - The body data is invalid. Please check the docs",
+                ("request", "invalid", "quote"),
+                ("body data is invalid", "Please check the docs"),
             ),
             (
                 "timeout of 60000ms exceeded",

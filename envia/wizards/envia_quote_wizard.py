@@ -48,6 +48,7 @@ class EnviaQuoteWizardBranch(models.TransientModel):
     currency_name = fields.Char()
     estimated_delivery_days = fields.Integer()
     service_id = fields.Char()
+    envia_service_id = fields.Integer()
     service_name = fields.Char()
     option_label = fields.Char(compute="_compute_option_labels")
     address_label = fields.Char(compute="_compute_option_labels")
@@ -2918,6 +2919,7 @@ class EnviaQuoteWizard(models.TransientModel):
             {
                 "wizard_id": self.id,
                 "service_id": branch.service_id,
+                "envia_service_id": branch.envia_service_id,
                 "carrier": branch.carrier,
                 "carrier_name": branch.carrier,
                 "service_name": branch.service_name or branch.service_id,
@@ -2966,10 +2968,29 @@ class EnviaQuoteWizard(models.TransientModel):
         """Write the wizard card onto envia.quote so label/create sees it."""
         self.ensure_one()
         selected = selected or self.service_line_ids.filtered("is_selected")[:1]
+        if not selected or not self.quote_id:
+            return self.env["envia.quote.service"]
         service = self._quote_service_matching_wizard_line(selected)
-        if service:
-            service.action_select_service()
-            service.quote_id._retire_sibling_quotes()
+        if not service:
+            # Branch/re-quote paths can leave wizard lines without a quote row.
+            service = self.env["envia.quote.service"].create(
+                {
+                    "quote_id": self.quote_id.id,
+                    "service_id": selected.service_id,
+                    "envia_service_id": selected.envia_service_id,
+                    "carrier": selected.carrier or "",
+                    "carrier_name": selected.carrier_name,
+                    "service_name": selected.service_name or selected.service_id,
+                    "price": selected.price,
+                    "currency_name": selected.currency_name,
+                    "estimated_delivery_days": selected.estimated_delivery_days,
+                    "drop_off": selected.drop_off,
+                }
+            )
+        elif selected.envia_service_id and service.envia_service_id != selected.envia_service_id:
+            service.envia_service_id = selected.envia_service_id
+        service.action_select_service()
+        service.quote_id._retire_sibling_quotes()
         return service
 
     def _is_restored_from_quote(self, quote):

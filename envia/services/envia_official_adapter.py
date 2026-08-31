@@ -381,9 +381,20 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             raise UserError(
                 _("Envia API token is missing. Check Settings > Envia Shipping.")
             )
-        payload: dict[str, Any] = {"id": str(order_id)}
-        if sid := EnviaOfficialAdapter._label_create_service_id(service_id):
-            payload["service_id"] = sid
+        sid = EnviaOfficialAdapter._label_create_service_id(service_id)
+        if not sid:
+            raise UserError(
+                _(
+                    "Envia service_id is missing. Get a new quote, select a rate, "
+                    "then try Generate Label again."
+                )
+            )
+        payload: dict[str, Any] = {"id": str(order_id), "service_id": sid}
+        _logger.info(
+            "Envia label/create shop_id=%s payload=%s",
+            self.shop_id,
+            payload,
+        )
         ecommerce_base = get_envia_ecommerce_private_base_url()
         client = EnviaClient(ecommerce_base, token)
         try:
@@ -491,8 +502,20 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         tracking_number = ",".join(trackings)
         label_url = (first.get("label") or first.get("labelUrl") or "").strip() or None
         carrier = (first.get("carrier") or "").strip()
-        shipment_id = first.get("shipmentId") or first.get("folio") or ""
-        order_id = first.get("orderId") or first.get("order_id") or ""
+        shipment_id = (
+            first.get("shipmentId")
+            or first.get("folio")
+            or (data.get("shipmentId") if isinstance(data, dict) else None)
+            or (data.get("shipment_id") if isinstance(data, dict) else None)
+            or ""
+        )
+        order_id = (
+            first.get("orderId")
+            or first.get("order_id")
+            or (data.get("orderId") if isinstance(data, dict) else None)
+            or (data.get("order_id") if isinstance(data, dict) else None)
+            or ""
+        )
         total_price = first.get("totalPrice")
         if total_price in (None, ""):
             total_price = first.get("price")
@@ -884,6 +907,21 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
         return None
 
     @staticmethod
+    def _checkout_numeric_service_id(rate: dict[str, Any]) -> int | None:
+        """Envia label/create needs the numeric ``serviceId``, not the service code."""
+        for key in ("serviceId", "service_id"):
+            value = rate.get(key)
+            if value in (None, False, ""):
+                continue
+            try:
+                numeric = int(value)
+            except (TypeError, ValueError):
+                continue
+            if numeric:
+                return numeric
+        return None
+
+    @staticmethod
     def _parse_checkout_rates(
         body: dict[str, Any] | list[Any],
         request: QuoteRequest,
@@ -901,8 +939,16 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
                 rate,
                 "service",
                 "serviceCode",
-                "service_id",
-            ) or index
+            )
+            if service_code in (None, False, ""):
+                # Only fall back to service_id when it is a non-numeric code.
+                raw_service_id = rate.get("service_id")
+                if raw_service_id not in (None, False, "") and not str(
+                    raw_service_id
+                ).isdigit():
+                    service_code = raw_service_id
+                else:
+                    service_code = index
             drop_off = EnviaOfficialAdapter._checkout_rate_value(rate, "dropOff", "drop_off")
             price_value = EnviaOfficialAdapter._checkout_rate_value(
                 rate,
@@ -915,10 +961,8 @@ class EnviaOfficialAdapter(EnviaAdapterBase):
             services.append(
                 QuoteService(
                     service_id=f"{rate_carrier}:{service_code}",
-                    envia_service_id=EnviaOfficialAdapter._checkout_rate_value(
-                        rate,
-                        "serviceId",
-                        "service_id",
+                    envia_service_id=EnviaOfficialAdapter._checkout_numeric_service_id(
+                        rate
                     ),
                     carrier=str(rate_carrier),
                     carrier_name=EnviaOfficialAdapter._checkout_rate_value(
