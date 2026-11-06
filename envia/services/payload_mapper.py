@@ -97,6 +97,13 @@ class PayloadMapper:
         )
 
     @staticmethod
+    def physical_merchandise_order_lines(order):
+        """Physical lines only (ignore services/virtual) for customs items."""
+        return PayloadMapper.merchandise_order_lines(order).filtered(
+            lambda line: line.product_id.type != "service"
+        )
+
+    @staticmethod
     def normalize_package_content(content, max_length=PACKAGE_CONTENT_MAX_LENGTH):
         if not content:
             return "General merchandise"

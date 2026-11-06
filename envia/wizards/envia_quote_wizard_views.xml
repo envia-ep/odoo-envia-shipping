@@ -16,6 +16,7 @@
                     <field name="destination_partner_readonly" invisible="1"/>
                     <field name="is_sandbox" invisible="1"/>
                     <field name="is_standalone" invisible="1"/>
+                    <field name="is_international_route" invisible="1"/>
                     <field name="selected_service_label" invisible="1"/>
                     <field name="selected_carrier_code" invisible="1"/>
                     <field name="show_origin_branch_picker" invisible="1"/>
@@ -292,6 +293,15 @@
                                 </templates>
                             </kanban>
                         </field>
+                    </div>
+
+                    <div class="o_envia_section" invisible="not is_international_route">
+                        <div class="o_envia_section_title mb-2">Customs (international)</div>
+                        <group>
+                            <field name="identification_number_origin"/>
+                            <field name="destination_identification_number"/>
+                            <field name="export_reason"/>
+                        </group>
                     </div>
 
                     <div class="o_envia_section o_envia_rates_section" invisible="not show_service_rates">

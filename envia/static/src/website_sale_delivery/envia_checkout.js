@@ -17,6 +17,10 @@ patch(Checkout.prototype, {
             ".o_envia_route_btn": { "t-on-click": this.onClickEnviaRoute.bind(this) },
             // Delegate on the list so dynamically added radios work without updateContent.
             ".o_envia_options_list": { "t-on-change": this.onChangeEnviaOption.bind(this) },
+            ".o_envia_destination_tax_id": {
+                "t-on-change": this.onChangeEnviaDestinationTaxId.bind(this),
+                "t-on-blur": this.onChangeEnviaDestinationTaxId.bind(this),
+            },
         });
         this._enviaLeafletReady = null;
         this._enviaMap = null;
@@ -132,10 +136,19 @@ patch(Checkout.prototype, {
         await this._applyEnviaOption(panel, option);
     },
 
+    async onChangeEnviaDestinationTaxId(ev) {
+        const input = ev.currentTarget;
+        if (!input?.classList?.contains("o_envia_destination_tax_id")) {
+            return;
+        }
+        await rpc("/shop/envia/delivery/tax-id", { tax_id: input.value || "" });
+    },
+
     async _applyEnviaOption(panel, option) {
         if (!option || this.isDestroyed) {
             return null;
         }
+        const taxInput = panel?.querySelector(".o_envia_destination_tax_id");
         const result = await rpc("/shop/envia/delivery/select", {
             route_type: option.route_type,
             carrier: option.carrier,
@@ -156,6 +169,7 @@ patch(Checkout.prototype, {
             base_price: option.base_price ?? option.price,
             price: option.base_price ?? option.price,
             drop_off: option.drop_off,
+            destination_tax_id: taxInput ? taxInput.value || "" : undefined,
         });
         if (this.isDestroyed) {
             return null;

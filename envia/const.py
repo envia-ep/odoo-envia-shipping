@@ -73,6 +73,23 @@ def get_envia_shipping_rules_settings_url(
     )
 
 
+def get_envia_products_edit_bulk_url(
+    shop_id: str | None,
+    *,
+    environment: str | None = None,
+) -> str:
+    """Staff-only Envia URL for bulk HS edit (not the plugin embed).
+
+    The SPA RoleGates ``client`` roles off this route and sends them home.
+    Plugin redirects must use ``get_envia_dashboard_embed_url`` instead.
+    """
+    shop = str(shop_id or "").strip()
+    if not shop:
+        raise ValueError("shop_id is required")
+    base = get_envia_shipping_app_base_url(environment).rstrip("/")
+    return f"{base}/products/edit-bulk?{urlencode({'shop_id': shop})}"
+
+
 def build_envia_ecommerce_embed_hash(store_url: str, company: str, shop: str) -> str:
     """WooCommerce contract: base64(store_url:company:shop)."""
     store = (store_url or "").strip()

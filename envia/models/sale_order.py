@@ -1,7 +1,15 @@
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import RedirectWarning, UserError, ValidationError
 from odoo.tools import float_compare
 
+from ..services.international import (
+    build_label_create_customs_payload,
+    customs_item_from_shipment_item,
+    is_international,
+    normalize_export_reason,
+    validate_international_generate,
+)
+from ..services.payload_mapper import PayloadMapper
 from ..services.website_pickup import WebsitePickupService
 
 
@@ -32,6 +40,29 @@ class SaleOrder(models.Model):
         string="Envia Order ID",
         copy=False,
         help="Envia ecommerce orderId from label/create; used to unlink fulfillments.",
+    )
+    envia_identification_number_origin = fields.Char(
+        string="Envia Origin Tax ID",
+        copy=False,
+    )
+    envia_destination_identification_number = fields.Char(
+        string="Envia Destination Tax ID",
+        copy=False,
+        help="Optional at website checkout; required when generating an international label.",
+    )
+    envia_export_reason = fields.Char(
+        string="Envia Export Reason",
+        copy=False,
+        default="sale",
+    )
+    envia_duties_payment_entity = fields.Selection(
+        [
+            ("sender", "Sender"),
+            ("recipient", "Recipient"),
+        ],
+        string="Envia Duties Payer",
+        copy=False,
+        default="sender",
     )
 
     def write(self, vals):
@@ -213,6 +244,134 @@ class SaleOrder(models.Model):
 
     def _get_envia_shipping_product(self):
         return self.env.ref("envia.product_envia_shipping")
+
+    def _envia_route_countries(self, quote=None):
+        """Return (origin_iso2, destination_iso2) for international detection."""
+        self.ensure_one()
+        quote = quote or self._get_active_envia_quote()
+        if quote:
+            return (quote.origin_country or "", quote.destination_country or "")
+        warehouse = self.warehouse_id
+        origin = (
+            warehouse.partner_id.country_id.code
+            if warehouse and warehouse.partner_id.country_id
+            else self.company_id.partner_id.country_id.code
+        ) or ""
+        destination = (self.partner_shipping_id.country_id.code or "") if self.partner_shipping_id else ""
+        return (origin, destination)
+
+    def _envia_is_international(self, quote=None):
+        self.ensure_one()
+        origin, destination = self._envia_route_countries(quote)
+        return is_international(origin, destination)
+
+    def _envia_resolve_origin_tax_id(self, quote=None):
+        self.ensure_one()
+        quote = quote or self._get_active_envia_quote()
+        if quote and (quote.identification_number_origin or "").strip():
+            return quote.identification_number_origin.strip()
+        if (self.envia_identification_number_origin or "").strip():
+            return self.envia_identification_number_origin.strip()
+        partner = (
+            quote.origin_partner_id
+            if quote and quote.origin_partner_id
+            else self.company_id.partner_id
+        )
+        return (partner.vat or "").strip() if partner else ""
+
+    def _envia_resolve_destination_tax_id(self, quote=None):
+        self.ensure_one()
+        quote = quote or self._get_active_envia_quote()
+        if quote and (quote.destination_identification_number or "").strip():
+            return quote.destination_identification_number.strip()
+        if (self.envia_destination_identification_number or "").strip():
+            return self.envia_destination_identification_number.strip()
+        partner = self.partner_shipping_id or self.partner_id
+        return (partner.vat or "").strip() if partner else ""
+
+    def _envia_customs_items_for_label(self, quote=None):
+        self.ensure_one()
+        origin, _destination = self._envia_route_countries(quote)
+        customs = []
+        for line in PayloadMapper.physical_merchandise_order_lines(self):
+            product = line.product_id
+            item = type(
+                "Item",
+                (),
+                {
+                    "description": product.display_name,
+                    "quantity": line.product_uom_qty,
+                    "price": line.price_unit,
+                    "currency": self.currency_id.name,
+                    "sku": product.default_code,
+                    "weight": product.weight,
+                    "product_code": product.envia_product_code,
+                    "country_of_manufacture": PayloadMapper._product_country_of_origin(
+                        product
+                    ),
+                },
+            )()
+            customs.append(customs_item_from_shipment_item(item, default_country=origin))
+        return customs
+
+    def _envia_products_missing_hs(self):
+        self.ensure_one()
+        return PayloadMapper.physical_merchandise_order_lines(self).filtered(
+            lambda line: not (line.product_id.envia_product_code or "").strip()
+        )
+
+    def _envia_raise_missing_hs_redirect(self, products):
+        """Open Envia Ecommerce Pro embed when HS codes are missing."""
+        self.ensure_one()
+        names = ", ".join(products.mapped("display_name"))
+        if len(products) == 1:
+            message = _(
+                "Product %(name)s needs an Envia HS code (product code).\n"
+                "Set it on the Odoo product (Envia HS code), or in Envia "
+                "Ecommerce Pro, then try again.",
+                name=names,
+            )
+        else:
+            message = _(
+                "These products need an Envia HS code (product code): %(name)s.\n"
+                "Set them on the Odoo products (Envia HS code), or in Envia "
+                "Ecommerce Pro, then try again.",
+                name=names,
+            )
+        # Dashboard embed (ecommerce?hash=). /products/edit-bulk excludes
+        # client roles and Envia SPA sends those users home.
+        action = self.env.ref(
+            "envia.action_envia_products_edit_bulk_dashboard",
+            raise_if_not_found=False,
+        )
+        if action:
+            raise RedirectWarning(message, action.id, _("Open Envia products"))
+        raise UserError(message)
+
+    def _envia_validate_international_label(self, quote=None):
+        """Hard-gate international label/create (checkout remains non-blocking).
+
+        ponytail: local HS/tax gates disabled for now — generate always hits
+        Envia ``label/create`` so the UI shows the API raw error (sandbox and
+        production). Re-enable validate_international_generate + HS redirect
+        when product wants Odoo-side messaging again.
+        """
+        self.ensure_one()
+        return
+
+    def _envia_label_create_extras(self, quote=None):
+        self.ensure_one()
+        quote = quote or self._get_active_envia_quote()
+        if not self._envia_is_international(quote):
+            return {}
+        export_reason = normalize_export_reason(
+            (quote.export_reason if quote else None) or self.envia_export_reason
+        )
+        return build_label_create_customs_payload(
+            origin_tax_id=self._envia_resolve_origin_tax_id(quote),
+            destination_tax_id=self._envia_resolve_destination_tax_id(quote),
+            export_reason=export_reason,
+        )
 
     def _get_active_envia_quote(self):
         self.ensure_one()

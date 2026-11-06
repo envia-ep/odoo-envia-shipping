@@ -102,6 +102,8 @@ class CreateShipmentRequest:
     package_weight: float | None = None
     package_content: str | None = None
     weight_unit: str | None = None
+    customs_settings: dict[str, Any] | None = None
+    customs_items: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

@@ -7,6 +7,12 @@ from ..services.dto import Contact
 from ..services.envia_client import EnviaClient
 from ..services.envia_geocodes_client import EnviaGeocodesClient
 from ..services.envia_official_adapter import EnviaOfficialAdapter
+from ..services.international import (
+    DUTIES_PAYMENT_SELECTION,
+    export_reason_selection,
+    is_international,
+    normalize_export_reason,
+)
 from ..services.payload_mapper import PayloadMapper, get_envia_adapter
 
 
@@ -407,6 +413,18 @@ class EnviaQuoteWizard(models.TransientModel):
     origin_readonly = fields.Boolean(compute="_compute_origin_readonly")
     destination_partner_readonly = fields.Boolean(
         compute="_compute_destination_partner_readonly",
+    )
+    identification_number_origin = fields.Char(string="Origin Tax ID")
+    destination_identification_number = fields.Char(string="Destination Tax ID")
+    export_reason = fields.Selection(
+        selection=lambda self: export_reason_selection(),
+        string="Export Reason",
+        default="sale",
+    )
+    duties_payment_entity = fields.Selection(
+        selection=DUTIES_PAYMENT_SELECTION,
+        string="Duties Payer",
+        default="sender",
     )
 
     @api.depends("service_line_ids")
@@ -809,6 +827,10 @@ class EnviaQuoteWizard(models.TransientModel):
         "weight",
         "selected_service_label",
         "sale_order_id.company_id.envia_enable_labels",
+        "is_international_route",
+        "identification_number_origin",
+        "destination_identification_number",
+        "export_reason",
     )
     def _compute_form_state(self):
         for wizard in self:
@@ -823,6 +845,8 @@ class EnviaQuoteWizard(models.TransientModel):
             label_errors = wizard._collect_validation_errors(
                 require_branches=wizard.destination_location_type == "branch"
             )
+            if wizard.is_international_route:
+                label_errors = label_errors + wizard._collect_international_label_errors()
             wizard.can_generate_label = bool(
                 wizard.envia_enable_labels
                 and wizard.selected_service_label
@@ -835,15 +859,15 @@ class EnviaQuoteWizard(models.TransientModel):
     def _compute_route_flags(self):
         company = self.env.company
         for wizard in self:
-            wizard.is_international_route = bool(
-                wizard.origin_country_id
-                and wizard.destination_country_id
-                and wizard.origin_country_id != wizard.destination_country_id
+            origin_code = wizard.origin_country_id.code if wizard.origin_country_id else ""
+            destination_code = (
+                wizard.destination_country_id.code if wizard.destination_country_id else ""
             )
+            wizard.is_international_route = is_international(origin_code, destination_code)
             wizard.is_domestic_route = bool(
-                wizard.origin_country_id
-                and wizard.destination_country_id
-                and wizard.origin_country_id == wizard.destination_country_id
+                origin_code
+                and destination_code
+                and not wizard.is_international_route
             )
             wizard.is_sandbox = company._envia_is_sandbox()
 
@@ -955,6 +979,27 @@ class EnviaQuoteWizard(models.TransientModel):
             defaults["content"] = PayloadMapper.sale_order_package_content(sale_order)
             defaults["declared_value"] = PayloadMapper.sale_order_declared_value(sale_order)
             defaults["weight"] = PayloadMapper.sale_order_package_weight(sale_order)
+            defaults["identification_number_origin"] = (
+                sale_order.envia_identification_number_origin
+                or (origin_partner.vat if origin_partner else False)
+                or company.partner_id.vat
+            )
+            defaults["destination_identification_number"] = (
+                sale_order.envia_destination_identification_number
+                or (
+                    sale_order.partner_shipping_id.vat
+                    if sale_order.partner_shipping_id
+                    else False
+                )
+            )
+            defaults["export_reason"] = sale_order.envia_export_reason or "sale"
+            defaults["duties_payment_entity"] = (
+                sale_order.envia_duties_payment_entity or "sender"
+            )
+        else:
+            defaults["identification_number_origin"] = (
+                (origin_partner.vat if origin_partner else False) or company.partner_id.vat
+            )
         if not defaults.get("origin_country_id") and company.country_id:
             defaults["origin_country_id"] = company.country_id.id
         if not company.envia_enable_branches:
@@ -2619,6 +2664,32 @@ class EnviaQuoteWizard(models.TransientModel):
                 )
         return errors
 
+    def _collect_international_label_errors(self):
+        """Hard requirements for international generate only (not checkout rates)."""
+        self.ensure_one()
+        errors = []
+        if not (self.identification_number_origin or "").strip():
+            errors.append(_("Origin tax ID is required for international shipments."))
+        if not (self.destination_identification_number or "").strip():
+            errors.append(_("Destination tax ID is required for international shipments."))
+        if not (self.export_reason or "").strip():
+            errors.append(_("Export reason is required for international shipments."))
+        order = self.sale_order_id
+        if order:
+            for line in PayloadMapper.physical_merchandise_order_lines(order):
+                if not (line.product_id.envia_product_code or "").strip():
+                    errors.append(
+                        _(
+                            "Product %(name)s needs an Envia HS code (product code).",
+                            name=line.product_id.display_name,
+                        )
+                    )
+        if self.declared_value is not None and self.declared_value <= 0:
+            errors.append(
+                _("Declared value must be greater than zero for international shipments.")
+            )
+        return errors
+
     def _branch_sides_required_for_confirm(self):
         """Only destination ocurre needs a concrete branch selection."""
         self.ensure_one()
@@ -2652,9 +2723,42 @@ class EnviaQuoteWizard(models.TransientModel):
 
     def _validate_before_label(self):
         self.ensure_one()
-        self._raise_validation_errors(
-            self._collect_validation_errors(require_branches=True)
-        )
+        errors = self._collect_validation_errors(require_branches=True)
+        if self.is_international_route:
+            errors = errors + self._collect_international_label_errors()
+        self._raise_validation_errors(errors)
+
+    def _customs_persist_values(self):
+        self.ensure_one()
+        return {
+            "identification_number_origin": (self.identification_number_origin or "").strip()
+            or False,
+            "destination_identification_number": (
+                self.destination_identification_number or ""
+            ).strip()
+            or False,
+            "export_reason": normalize_export_reason(self.export_reason) or "sale",
+            "duties_payment_entity": self.duties_payment_entity or "sender",
+        }
+
+    def _persist_customs_to_quote_and_order(self):
+        self.ensure_one()
+        values = self._customs_persist_values()
+        if self.quote_id:
+            self.quote_id.write(values)
+        if self.sale_order_id:
+            self.sale_order_id.write(
+                {
+                    "envia_identification_number_origin": values[
+                        "identification_number_origin"
+                    ],
+                    "envia_destination_identification_number": values[
+                        "destination_identification_number"
+                    ],
+                    "envia_export_reason": values["export_reason"],
+                    "envia_duties_payment_entity": values["duties_payment_entity"],
+                }
+            )
 
     def _get_quote_carriers(self):
         """Carrier filter for checkout.
@@ -2799,6 +2903,7 @@ class EnviaQuoteWizard(models.TransientModel):
                 "currency_id": self.currency_id.id,
                 "carriers": self._get_quote_carriers(),
                 **self._quote_location_values(),
+                **self._customs_persist_values(),
             },
         )
         self.write({"quote_id": quote.id})
@@ -3136,6 +3241,16 @@ class EnviaQuoteWizard(models.TransientModel):
             values["destination_country_id"] = destination_country.id
         if quote.currency_id:
             values["currency_id"] = quote.currency_id.id
+        if quote.identification_number_origin:
+            values["identification_number_origin"] = quote.identification_number_origin
+        if quote.destination_identification_number:
+            values["destination_identification_number"] = (
+                quote.destination_identification_number
+            )
+        if quote.export_reason:
+            values["export_reason"] = quote.export_reason
+        if quote.duties_payment_entity:
+            values["duties_payment_entity"] = quote.duties_payment_entity
         State = self.env["res.country.state"]
         for side in ("origin", "destination"):
             state_code = getattr(quote, f"{side}_state")
@@ -3188,7 +3303,9 @@ class EnviaQuoteWizard(models.TransientModel):
     def action_confirm_selection(self):
         """Persist selected rate, apply shipping cost, then create the label."""
         self.ensure_one()
+        self._validate_before_label()
         self._finalize_quote_selection()
+        self._persist_customs_to_quote_and_order()
         if self.quote_id:
             self.quote_id._retire_sibling_quotes()
         self._apply_shipping_cost_to_order()
@@ -3198,7 +3315,7 @@ class EnviaQuoteWizard(models.TransientModel):
                 lambda item: item.picking_type_code == "outgoing"
                 and item.state != "cancel"
             ).sorted("id", reverse=True)[:1]
-        generate_ctx = {}
+        generate_ctx = {"envia_customs_confirmed": True}
         if self.quote_id:
             generate_ctx["envia_force_quote_id"] = self.quote_id.id
         if picking and picking.carrier_id.delivery_type == "envia":

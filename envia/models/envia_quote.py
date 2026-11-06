@@ -4,6 +4,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from ..const import ENVIA_LOCATION_TYPE_SELECTION
+from ..services.international import DUTIES_PAYMENT_SELECTION, export_reason_selection
 from ..services.payload_mapper import PayloadMapper
 
 
@@ -67,6 +68,18 @@ class EnviaQuote(models.Model):
     envia_enable_labels = fields.Boolean(related="company_id.envia_enable_labels")
     envia_show_quote_archive = fields.Boolean(related="company_id.envia_show_quote_archive")
     shipment_ids = fields.One2many("envia.shipment", "quote_id", string="Shipments")
+    identification_number_origin = fields.Char(string="Origin Tax ID")
+    destination_identification_number = fields.Char(string="Destination Tax ID")
+    export_reason = fields.Selection(
+        selection=lambda self: export_reason_selection(),
+        string="Export Reason",
+        default="sale",
+    )
+    duties_payment_entity = fields.Selection(
+        selection=DUTIES_PAYMENT_SELECTION,
+        string="Duties Payer",
+        default="sender",
+    )
 
     @api.depends(
         "selected_service_id",
