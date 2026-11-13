@@ -1,10 +1,16 @@
 import base64
 from urllib.parse import urlencode
 
-ENVIA_LOCATION_TYPE_SELECTION = [
-    ("address", "Domicile"),
-    ("branch", "Branch"),
-]
+def envia_location_type_selection(_model=None):
+    """Fresh list per field — Odoo 19 mutates shared Selection lists in place."""
+    return [
+        ("address", "Domicile"),
+        ("branch", "Branch"),
+    ]
+
+
+# Backward-compat alias (do not pass this list to fields.Selection).
+ENVIA_LOCATION_TYPE_SELECTION = envia_location_type_selection()
 
 ENVIA_ECOMMERCE_EMBED_URL_PRODUCTION = "https://shipping.envia.com/ecommerce"
 ENVIA_ECOMMERCE_EMBED_URL_SANDBOX = "https://shipping-test.envia.com/ecommerce"
@@ -71,6 +77,19 @@ def get_envia_shipping_rules_settings_url(
         fragment=ENVIA_SHIPPING_RULES_SETTINGS_FRAGMENT,
         environment=environment,
     )
+
+
+def get_envia_products_edit_bulk_url(
+    shop_id: str | None,
+    *,
+    environment: str | None = None,
+) -> str:
+    """Envia URL for bulk HS / product-code edit (``/products/edit-bulk``)."""
+    shop = str(shop_id or "").strip()
+    if not shop:
+        raise ValueError("shop_id is required")
+    base = get_envia_shipping_app_base_url(environment).rstrip("/")
+    return f"{base}/products/edit-bulk?{urlencode({'shop_id': shop})}"
 
 
 def build_envia_ecommerce_embed_hash(store_url: str, company: str, shop: str) -> str:

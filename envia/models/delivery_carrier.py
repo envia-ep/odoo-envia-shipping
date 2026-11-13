@@ -103,7 +103,10 @@ class DeliveryCarrier(models.Model):
             if not quote.picking_id:
                 quote.picking_id = picking.id
             # Keep envia_module / service id visible to Envia before label/create.
+            quote._validate_label_generation()
             sale_order._envia_sync_service_id_from_quote(quote)
+            sale_order._envia_validate_international_label(quote)
+            customs_extras = sale_order._envia_label_create_extras(quote)
             # Regenerate path: unlink prior Envia fulfillment, then label/create.
             picking._envia_unlink_prior_fulfillments()
             # ponytail: Envia label/create XML-RPC-writes stock.picking during this
@@ -118,11 +121,24 @@ class DeliveryCarrier(models.Model):
             )
             try:
                 response = adapter.create_label_for_odoo_order(
-                    sale_order.id, envia_service_id
+                    sale_order.id,
+                    envia_service_id,
+                    customs_extras=customs_extras,
                 )
             except UserError as error:
-                message = str(error.args[0] if error.args else error).lower()
-                if "already fulfilled" not in message:
+                message = str(error.args[0] if error.args else error)
+                folded = message.lower()
+                if "identification_number" in folded and "international" in folded:
+                    raise UserError(
+                        _(
+                            "International shipments need origin and destination "
+                            "tax IDs.\n"
+                            "Fill the customs form (Generate Envia Label) or set "
+                            "the fiscal ID (VAT) on the delivery address, then try "
+                            "again."
+                        )
+                    ) from error
+                if "already fulfilled" not in folded:
                     raise
                 # Last fulfillment still linked — unlink again and retry once.
                 _logger.info(
@@ -143,7 +159,9 @@ class DeliveryCarrier(models.Model):
                 if not self.env.context.get("envia_skip_dedicated_cursor"):
                     self.env.cr.commit()
                 response = adapter.create_label_for_odoo_order(
-                    sale_order.id, envia_service_id
+                    sale_order.id,
+                    envia_service_id,
+                    customs_extras=customs_extras,
                 )
             # Persist orderId/shipmentId immediately (SO + Envios). Envia may have
             # already created the label; losing these IDs blocks Replace/unlink.
@@ -321,7 +339,7 @@ class DeliveryCarrier(models.Model):
         return ENVIA_PUBLIC_TRACKING_URL.format(tracking=first)
 
     def envia_cancel_shipment(self, pickings):
-        """Core Cancel dispatcher: unlink on Envia + clear local label fields."""
+        """Core Cancel dispatcher: cancel + unlink on Envia, clear local fields."""
         pickings._envia_unlink_label()
 
     def envia_rate_shipment(self, order):
@@ -345,8 +363,9 @@ class DeliveryCarrier(models.Model):
                 return {
                     "success": False,
                     "price": 0.0,
+                    # Soft copy: website badge must not look like a hard failure.
                     "error_message": _(
-                        "No Envia rates available for this order."
+                        "No shipping services available for this address."
                     ),
                     "warning_message": False,
                 }

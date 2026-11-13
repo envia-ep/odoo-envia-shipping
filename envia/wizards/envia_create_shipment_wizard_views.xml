@@ -15,6 +15,7 @@
                     <field name="quote_id" invisible="1"/>
                     <field name="sale_order_id" invisible="1"/>
                     <field name="picking_id" invisible="1"/>
+                    <field name="is_international" invisible="1"/>
 
                     <div class="border rounded p-3 mb-3 bg-white o_envia_rate_card">
                         <div class="row g-3">
@@ -40,6 +41,18 @@
                     <div class="o_envia_address_preview">
                         <field name="package_summary" readonly="1" nolabel="1"/>
                     </div>
+
+                    <group string="Customs (international)" invisible="not is_international">
+                        <field name="identification_number_origin"
+                               required="is_international"
+                               readonly="0"
+                               placeholder="Origin tax ID / RFC"/>
+                        <field name="destination_identification_number"
+                               required="is_international"
+                               readonly="0"
+                               placeholder="Destination tax ID / VAT"/>
+                        <field name="export_reason" required="is_international" readonly="0"/>
+                    </group>
                 </sheet>
                 <footer>
                     <button name="action_create_shipment" type="object"
