@@ -166,20 +166,13 @@ class TestEnviaDashboardEmbed(TransactionCase):
             staff_url = get_envia_products_edit_bulk_url("125410")
             action = company.action_envia_open_products_edit_bulk()
             dashboard = company.action_envia_products_edit_bulk_dashboard()
-        self.assertEqual(
-            staff_url,
-            "https://shipping.envia.com/products/edit-bulk?shop_id=125410",
-        )
+        expected = "https://shipping.envia.com/products/edit-bulk?shop_id=125410"
+        self.assertEqual(staff_url, expected)
         dashboard_action = self.env.ref("envia.action_envia_products_edit_bulk_dashboard")
         self.assertEqual(action["type"], "ir.actions.act_url")
         self.assertEqual(
             action["url"],
             f"https://shop.example.com/web#action={dashboard_action.id}&cids={company.id}",
         )
-        digest = base64.b64encode(
-            b"https://shop.example.com:99:125410"
-        ).decode("ascii")
-        self.assertEqual(
-            dashboard["params"]["url"],
-            f"https://shipping.envia.com/ecommerce?hash={digest}",
-        )
+        self.assertEqual(action["target"], "new")
+        self.assertEqual(dashboard["params"]["url"], expected)

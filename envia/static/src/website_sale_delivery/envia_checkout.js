@@ -17,10 +17,6 @@ patch(Checkout.prototype, {
             ".o_envia_route_btn": { "t-on-click": this.onClickEnviaRoute.bind(this) },
             // Delegate on the list so dynamically added radios work without updateContent.
             ".o_envia_options_list": { "t-on-change": this.onChangeEnviaOption.bind(this) },
-            ".o_envia_destination_tax_id": {
-                "t-on-change": this.onChangeEnviaDestinationTaxId.bind(this),
-                "t-on-blur": this.onChangeEnviaDestinationTaxId.bind(this),
-            },
         });
         this._enviaLeafletReady = null;
         this._enviaMap = null;
@@ -72,6 +68,9 @@ patch(Checkout.prototype, {
         // Apply cheapest Ship before super rates: envia_rate_shipment reuses the
         // active quote, so a stale expensive selection would paint the badge wrong.
         if (radio?.dataset?.deliveryType === "envia") {
+            // Core disables radios after a failed rate; keep Envia selectable so the
+            // panel can show a soft "no services" message instead of a hard error.
+            radio.disabled = false;
             const panel = radio.closest("[name='o_delivery_method']")?.querySelector(
                 ".o_envia_delivery_panel"
             );
@@ -94,6 +93,21 @@ patch(Checkout.prototype, {
             return;
         }
         this._toggleEnviaPanels(radio);
+    },
+
+    _updateAmountBadge(radio, rateData) {
+        // Never paint API/rate failures on the Envia price badge — the panel already
+        // shows a friendly empty-state message in place of the rates list.
+        if (radio?.dataset?.deliveryType === "envia" && rateData && !rateData.success) {
+            const badge = this._getDeliveryPriceBadge(radio);
+            if (badge) {
+                badge.textContent = "";
+                badge.classList.remove("text-muted");
+            }
+            radio.disabled = false;
+            return;
+        }
+        return super._updateAmountBadge(radio, rateData);
     },
 
     _toggleEnviaPanels(selectedRadio) {
@@ -136,19 +150,10 @@ patch(Checkout.prototype, {
         await this._applyEnviaOption(panel, option);
     },
 
-    async onChangeEnviaDestinationTaxId(ev) {
-        const input = ev.currentTarget;
-        if (!input?.classList?.contains("o_envia_destination_tax_id")) {
-            return;
-        }
-        await rpc("/shop/envia/delivery/tax-id", { tax_id: input.value || "" });
-    },
-
     async _applyEnviaOption(panel, option) {
         if (!option || this.isDestroyed) {
             return null;
         }
-        const taxInput = panel?.querySelector(".o_envia_destination_tax_id");
         const result = await rpc("/shop/envia/delivery/select", {
             route_type: option.route_type,
             carrier: option.carrier,
@@ -169,7 +174,6 @@ patch(Checkout.prototype, {
             base_price: option.base_price ?? option.price,
             price: option.base_price ?? option.price,
             drop_off: option.drop_off,
-            destination_tax_id: taxInput ? taxInput.value || "" : undefined,
         });
         if (this.isDestroyed) {
             return null;
@@ -273,21 +277,12 @@ patch(Checkout.prototype, {
         ) {
             return;
         }
-        if (cached.error) {
-            this._setEnviaFeedback(panel, cached.error);
+        if (cached.error || !(cached.options || []).length) {
             this._enviaOptions = [];
+            this._setEnviaFeedback(panel, this._enviaNoServicesMessage(routeType));
             return;
         }
         this._enviaOptions = cached.options || [];
-        if (!this._enviaOptions.length) {
-            this._setEnviaFeedback(
-                panel,
-                routeType === "pickup"
-                    ? _t("No pickup locations near this address.")
-                    : _t("No rates available for this address.")
-            );
-            return;
-        }
         this._setEnviaFeedback(panel, "");
         const mapOnly = routeType === "pickup" && panel.dataset.pickupMapOnly === "1";
         list.classList.toggle("d-none", mapOnly);
@@ -305,6 +300,9 @@ patch(Checkout.prototype, {
             const service = option.service
                 ? `<span class="o_envia_option_service">${option.service}</span>`
                 : "";
+            const codBadge = option.cod
+                ? `<span class="o_envia_option_cod" title="${_t("Cash on delivery")}">COD</span>`
+                : "";
             const checked = cheapest && option.id === cheapest.id ? "checked" : "";
             if (checked) {
                 li.classList.add("o_envia_option_selected");
@@ -315,7 +313,9 @@ patch(Checkout.prototype, {
                            name="o_envia_option" value="${option.id}" ${checked}/>
                     <span class="o_envia_option_body">
                         <span class="o_envia_option_header">
-                            <span class="o_envia_option_name">${option.name || ""}</span>
+                            <span class="o_envia_option_name">
+                                ${option.name || ""}${codBadge}
+                            </span>
                             <span class="o_envia_option_price">${price}</span>
                         </span>
                         ${address}
@@ -347,6 +347,12 @@ patch(Checkout.prototype, {
             cheapest = option;
         }
         return cheapest;
+    },
+
+    _enviaNoServicesMessage(routeType) {
+        return routeType === "pickup"
+            ? _t("No pickup locations near this address.")
+            : _t("No shipping services available for this address.");
     },
 
     _setEnviaFeedback(panel, message) {
@@ -419,8 +425,11 @@ patch(Checkout.prototype, {
             const lng = Number(option.lng);
             const marker = Leaflet.marker([lat, lng]);
             marker.optionId = option.id;
+            const codLabel = option.cod
+                ? ` <span class="o_envia_option_cod">COD</span>`
+                : "";
             marker.bindPopup(
-                `<strong>${option.name || ""}</strong><br/>${option.address || ""}`,
+                `<strong>${option.name || ""}${codLabel}</strong><br/>${option.address || ""}`,
                 {
                     autoPan: true,
                     // Extra top padding keeps the popup fully inside the map (not over the rates list).

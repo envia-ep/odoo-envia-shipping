@@ -27,22 +27,6 @@ class WebsiteSaleEnviaDelivery(Delivery):
         return {"options": options}
 
     @route(
-        "/shop/envia/delivery/tax-id",
-        type="jsonrpc",
-        auth="public",
-        website=True,
-        methods=["POST"],
-    )
-    def shop_envia_delivery_tax_id(self, tax_id=None, **kwargs):
-        """Persist destination tax ID without blocking checkout rates (policy 2C)."""
-        order = request.cart
-        if not order:
-            raise ValidationError(_("Your cart is empty."))
-        value = (tax_id or "").strip() or False
-        order.sudo().write({"envia_destination_identification_number": value})
-        return {"success": True, "tax_id": value or ""}
-
-    @route(
         "/shop/envia/delivery/select",
         type="jsonrpc",
         auth="public",
@@ -54,14 +38,7 @@ class WebsiteSaleEnviaDelivery(Delivery):
         if not order:
             raise ValidationError(_("Your cart is empty."))
         order_sudo = order.sudo()
-        tax_id = payload.pop("destination_tax_id", None)
-        if tax_id is not None:
-            order_sudo.write(
-                {
-                    "envia_destination_identification_number": (tax_id or "").strip()
-                    or False
-                }
-            )
+        payload.pop("destination_tax_id", None)
         # Do not call _set_delivery_method here: it re-rates cheapest and
         # would overwrite the customer selection until sync runs.
         service = WebsitePickupService(request.env)

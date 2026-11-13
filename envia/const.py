@@ -1,10 +1,16 @@
 import base64
 from urllib.parse import urlencode
 
-ENVIA_LOCATION_TYPE_SELECTION = [
-    ("address", "Domicile"),
-    ("branch", "Branch"),
-]
+def envia_location_type_selection(_model=None):
+    """Fresh list per field — Odoo 19 mutates shared Selection lists in place."""
+    return [
+        ("address", "Domicile"),
+        ("branch", "Branch"),
+    ]
+
+
+# Backward-compat alias (do not pass this list to fields.Selection).
+ENVIA_LOCATION_TYPE_SELECTION = envia_location_type_selection()
 
 ENVIA_ECOMMERCE_EMBED_URL_PRODUCTION = "https://shipping.envia.com/ecommerce"
 ENVIA_ECOMMERCE_EMBED_URL_SANDBOX = "https://shipping-test.envia.com/ecommerce"
@@ -78,11 +84,7 @@ def get_envia_products_edit_bulk_url(
     *,
     environment: str | None = None,
 ) -> str:
-    """Staff-only Envia URL for bulk HS edit (not the plugin embed).
-
-    The SPA RoleGates ``client`` roles off this route and sends them home.
-    Plugin redirects must use ``get_envia_dashboard_embed_url`` instead.
-    """
+    """Envia URL for bulk HS / product-code edit (``/products/edit-bulk``)."""
     shop = str(shop_id or "").strip()
     if not shop:
         raise ValueError("shop_id is required")

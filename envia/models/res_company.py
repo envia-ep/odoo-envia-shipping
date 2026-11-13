@@ -5,6 +5,7 @@ from odoo.exceptions import UserError
 from ..const import (
     get_envia_checkout_settings_url,
     get_envia_dashboard_embed_url,
+    get_envia_products_edit_bulk_url,
     get_envia_shipping_rules_settings_url,
 )
 from ..services.envia_config import (
@@ -484,28 +485,16 @@ class ResCompany(models.Model):
         )
 
     def action_envia_open_products_edit_bulk(self):
-        """New tab → Odoo Envia embed (Ecommerce Pro with shop hash)."""
+        """New Odoo tab → dashboard client with Envia products bulk-edit embed."""
         return self._envia_open_settings_dashboard_tab(
             "envia.action_envia_products_edit_bulk_dashboard"
         )
 
     def action_envia_products_edit_bulk_dashboard(self):
-        """Load the authenticated Ecommerce Pro iframe (``?hash=``).
-
-        ``/products/edit-bulk`` RoleGates out ``client`` roles and sends the
-        SPA home — unusable from the plugin embed. Ecommerce Pro is the
-        session that the shop hash can open.
-        """
-        company, shop_id = self._envia_require_shop_connected()
-        store_url = (
-            self.env["ir.config_parameter"].sudo().get_param("web.base.url") or ""
-        ).rstrip("/")
+        """Iframe src: ``/products/edit-bulk?shop_id=…`` inside Odoo Envia dashboard."""
+        _company, shop_id = self._envia_require_shop_connected()
         return self._envia_settings_dashboard_action(
-            get_envia_dashboard_embed_url(
-                store_url=store_url,
-                company=company.envia_company_id,
-                shop=shop_id,
-            )
+            get_envia_products_edit_bulk_url(shop_id)
         )
 
     @api.model

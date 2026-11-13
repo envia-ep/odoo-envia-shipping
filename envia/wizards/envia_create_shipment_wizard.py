@@ -2,7 +2,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 from ..services.international import (
-    DUTIES_PAYMENT_SELECTION,
+    duties_payment_selection,
     export_reason_selection,
     is_international,
     normalize_export_reason,
@@ -37,7 +37,7 @@ class EnviaCreateShipmentWizard(models.TransientModel):
         default="sale",
     )
     duties_payment_entity = fields.Selection(
-        selection=DUTIES_PAYMENT_SELECTION,
+        selection=duties_payment_selection,
         string="Duties Payer",
         default="sender",
     )
@@ -50,10 +50,17 @@ class EnviaCreateShipmentWizard(models.TransientModel):
     def _compute_is_international(self):
         for wizard in self:
             quote = wizard.quote_id
-            wizard.is_international = bool(
-                quote
-                and is_international(quote.origin_country, quote.destination_country)
-            )
+            if quote and wizard.sale_order_id:
+                wizard.is_international = wizard.sale_order_id._envia_is_international(
+                    quote
+                )
+            else:
+                wizard.is_international = bool(
+                    quote
+                    and is_international(
+                        quote.origin_country, quote.destination_country
+                    )
+                )
 
     def _compute_route_summary(self):
         for wizard in self:
@@ -96,8 +103,7 @@ class EnviaCreateShipmentWizard(models.TransientModel):
             )
             defaults.setdefault(
                 "destination_identification_number",
-                quote.destination_identification_number
-                or (order._envia_resolve_destination_tax_id(quote) if order else False)
+                (order._envia_resolve_destination_tax_id(quote) if order else False)
                 or False,
             )
             defaults.setdefault(
@@ -130,15 +136,17 @@ class EnviaCreateShipmentWizard(models.TransientModel):
 
     def _persist_customs(self):
         self.ensure_one()
+        destination_tax = (self.destination_identification_number or "").strip()
+        if not destination_tax and self.sale_order_id:
+            destination_tax = self.sale_order_id._envia_resolve_destination_tax_id(
+                self.quote_id
+            )
         values = {
             "identification_number_origin": (
                 self.identification_number_origin or ""
             ).strip()
             or False,
-            "destination_identification_number": (
-                self.destination_identification_number or ""
-            ).strip()
-            or False,
+            "destination_identification_number": destination_tax or False,
             "export_reason": normalize_export_reason(self.export_reason) or "sale",
             "duties_payment_entity": self.duties_payment_entity or "sender",
         }
@@ -167,10 +175,12 @@ class EnviaCreateShipmentWizard(models.TransientModel):
             self.quote_id.picking_id = self.picking_id.id
         # Ecommerce label/create path (delivery Generate Envia Label).
         if self.picking_id and self.picking_id.carrier_id.delivery_type == "envia":
+            # Do not set envia_skip_dedicated_cursor: label/create needs the
+            # post-persist commit so SERIALIZATION_FAILURE retries (Envia
+            # XML-RPC writes the picking) do not drop orderId/shipmentId.
             return self.picking_id.with_context(
                 envia_customs_confirmed=True,
                 envia_force_quote_id=self.quote_id.id,
-                envia_skip_dedicated_cursor=True,
             ).action_envia_generate_label()
         shipment = self.env["envia.shipment"].action_create_shipment_from_quote(
             self.quote_id

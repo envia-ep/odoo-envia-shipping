@@ -17,3 +17,4 @@ from . import test_choose_delivery_apply
 from . import test_billing_info_wizard
 from . import test_warehouse_origin
 from . import test_website_pickup
+from . import test_origin_branches

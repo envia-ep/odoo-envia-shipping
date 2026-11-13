@@ -117,7 +117,9 @@ class EnviaClient:
             if error_code == "INVALID_POSTAL_CODE":
                 raise UserError(_("Invalid postal code: %s") % message)
             if error_code == "NO_RATES_AVAILABLE":
-                raise UserError(_("No shipping services available for this route."))
+                raise UserError(
+                    _("No shipping services available for this address.")
+                )
             if error_code == "WEIGHT_EXCEEDS_LIMIT":
                 raise UserError(_("Weight exceeds limit: %s") % message)
             raise EnviaApiError(_("Envia API error (%(status)s): %(message)s") % {
@@ -339,6 +341,35 @@ class EnviaClient:
             data = body.get("data")
             branches = data if isinstance(data, list) else []
         return self.refine_branches_near_zip(branches, zipcode)
+
+    def post_origin_branches(
+        self,
+        *,
+        route: str,
+        queries_base_url: str,
+        carrier_base_url: str,
+        carrier: str,
+        country_code: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | list[Any]:
+        """Origin drop-off branches. Destination pickup stays on get_branches."""
+        if route == "oxxo":
+            return self._post(
+                "branches/estafeta/oxxo",
+                payload,
+                base_url=queries_base_url,
+            )
+        if route == "address":
+            return self._post(
+                "ship/branchesbyaddress",
+                payload,
+                base_url=carrier_base_url,
+            )
+        return self._post(
+            f"branches/{carrier}/{country_code}",
+            payload,
+            base_url=queries_base_url,
+        )
 
     @staticmethod
     def refine_branches_near_zip(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 from odoo.exceptions import UserError
@@ -20,10 +21,29 @@ EXPORT_REASON_FALLBACK: tuple[str, ...] = (
     "company transfer",
 )
 
-DUTIES_PAYMENT_SELECTION: list[tuple[str, str]] = [
-    ("sender", "Sender"),
-    ("recipient", "Recipient"),
-]
+# Plain str labels only — Odoo 19 Selection rejects LazyTranslate / non-str.
+_EXPORT_REASON_LABELS: dict[str, str] = {
+    "sale": "Sale",
+    "gift": "Gift",
+    "sample": "Sample",
+    "return": "Return",
+    "personal effects": "Personal effects",
+    "donation": "Donation",
+    "temporary export": "Temporary export",
+    "repair": "Repair",
+    "company transfer": "Company transfer",
+}
+
+def duties_payment_selection(_model=None) -> list[tuple[str, str]]:
+    """Fresh list per field — Odoo 19 mutates shared Selection lists in place."""
+    return [
+        ("sender", "Sender"),
+        ("recipient", "Recipient"),
+    ]
+
+
+# Backward-compat alias (do not pass this list to fields.Selection).
+DUTIES_PAYMENT_SELECTION = duties_payment_selection()
 
 
 def is_international(origin_country: str | None, destination_country: str | None) -> bool:
@@ -37,6 +57,9 @@ def export_reason_label(name: str) -> str:
     text = (name or "").strip()
     if not text:
         return ""
+    known = _EXPORT_REASON_LABELS.get(text.casefold())
+    if known is not None:
+        return known
     return text[:1].upper() + text[1:]
 
 
@@ -72,12 +95,15 @@ def parse_export_reasons_body(body: Any) -> list[dict[str, str]]:
             continue
         if not name:
             continue
-        reasons.append({"name": name, "label": export_reason_label(name)})
+        reasons.append({"name": name, "label": str(export_reason_label(name))})
     return reasons
 
 
 def fallback_export_reasons() -> list[dict[str, str]]:
-    return [{"name": name, "label": export_reason_label(name)} for name in EXPORT_REASON_FALLBACK]
+    return [
+        {"name": name, "label": str(export_reason_label(name))}
+        for name in EXPORT_REASON_FALLBACK
+    ]
 
 
 def omit_empty(mapping: dict[str, Any]) -> dict[str, Any]:
@@ -157,6 +183,44 @@ def validate_customs_items(items: Iterable[dict[str, Any]]) -> list[str]:
     return errors
 
 
+def is_missing_product_code_error(text: str | None) -> bool:
+    """True when Envia/Odoo messaging means HS ``productCode`` is missing."""
+    folded = (text or "").casefold()
+    compact = folded.replace(" ", "")
+    if "productcode" in compact and "missing" in folded:
+        return True
+    if "hs code" in folded and "missing" in folded:
+        return True
+    if "needs an envia hs code" in folded:
+        return True
+    return False
+
+
+def missing_product_code_names(text: str | None) -> list[str]:
+    """Product names from Envia ``Missing for "…"`` fragments."""
+    return [
+        name.strip()
+        for name in re.findall(r'Missing for\s+"([^"]+)"', text or "", flags=re.I)
+        if name.strip()
+    ]
+
+
+def missing_product_code_user_message(product_names: Iterable[str] | None = None) -> str:
+    """Client-facing copy when international HS codes are missing."""
+    names = [str(name).strip() for name in (product_names or []) if str(name).strip()]
+    if len(names) == 1:
+        detail = _("Missing for: %(name)s") % {"name": names[0]}
+    elif names:
+        detail = _("Missing for: %(name)s") % {"name": ", ".join(names)}
+    else:
+        detail = _("One or more products are missing an HS code.")
+    return _(
+        "International shipments need an HS code (product code) on each product.\n"
+        "%(detail)s\n\n"
+        "Add the HS codes in Envia Products (bulk edit), then generate the label again."
+    ) % {"detail": detail}
+
+
 def validate_international_generate(
     *,
     origin_tax_id: str | None,
@@ -185,11 +249,14 @@ def build_label_create_customs_payload(
     origin_tax_id: str | None,
     destination_tax_id: str | None,
     export_reason: str | None,
+    duties_payment_entity: str | None = None,
 ) -> dict[str, Any]:
-    """Extra keys for ecommerce ``label/create`` (omit empties).
+    """Extra keys for ecommerce ``label/create`` (omit empty tax ids).
 
-    Never send ``dutiesPaymentEntity`` — not part of this contract.
+    ``duties_payment_entity`` is accepted for call-site compat but never sent —
+    Envia resolves duties payment per carrier.
     """
+    del duties_payment_entity  # ponytail: Envia picks duties; sending SENDER 422s.
     payload: dict[str, Any] = omit_empty(
         {
             "identification_number_origin": (origin_tax_id or "").strip(),

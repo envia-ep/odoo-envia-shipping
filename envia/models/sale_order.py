@@ -6,9 +6,12 @@ from ..services.international import (
     build_label_create_customs_payload,
     customs_item_from_shipment_item,
     is_international,
+    missing_product_code_user_message,
     normalize_export_reason,
     validate_international_generate,
 )
+from ..services.envia_official_adapter import EnviaOfficialAdapter
+from ..services.origin_branches import label_create_branch_payload
 from ..services.payload_mapper import PayloadMapper
 from ..services.website_pickup import WebsitePickupService
 
@@ -48,7 +51,7 @@ class SaleOrder(models.Model):
     envia_destination_identification_number = fields.Char(
         string="Envia Destination Tax ID",
         copy=False,
-        help="Optional at website checkout; required when generating an international label.",
+        help="Deprecated mirror; Destination Tax ID always uses the shipping partner VAT.",
     )
     envia_export_reason = fields.Char(
         string="Envia Export Reason",
@@ -246,18 +249,29 @@ class SaleOrder(models.Model):
         return self.env.ref("envia.product_envia_shipping")
 
     def _envia_route_countries(self, quote=None):
-        """Return (origin_iso2, destination_iso2) for international detection."""
+        """Return (origin_iso2, destination_iso2) for international detection.
+
+        Prefer quote countries, but fall back to warehouse/company → delivery
+        partner so a quote with blank country codes still opens the customs
+        modal instead of hitting Envia ``label/create`` bare.
+        """
         self.ensure_one()
         quote = quote or self._get_active_envia_quote()
-        if quote:
-            return (quote.origin_country or "", quote.destination_country or "")
         warehouse = self.warehouse_id
-        origin = (
+        origin_fallback = (
             warehouse.partner_id.country_id.code
-            if warehouse and warehouse.partner_id.country_id
+            if warehouse and warehouse.partner_id and warehouse.partner_id.country_id
             else self.company_id.partner_id.country_id.code
         ) or ""
-        destination = (self.partner_shipping_id.country_id.code or "") if self.partner_shipping_id else ""
+        destination_fallback = (
+            (self.partner_shipping_id.country_id.code or "")
+            if self.partner_shipping_id and self.partner_shipping_id.country_id
+            else ""
+        )
+        if not quote:
+            return (origin_fallback, destination_fallback)
+        origin = (quote.origin_country or "").strip() or origin_fallback
+        destination = (quote.destination_country or "").strip() or destination_fallback
         return (origin, destination)
 
     def _envia_is_international(self, quote=None):
@@ -280,6 +294,7 @@ class SaleOrder(models.Model):
         return (partner.vat or "").strip() if partner else ""
 
     def _envia_resolve_destination_tax_id(self, quote=None):
+        """Destination fiscal ID: quote value first, else delivery partner VAT."""
         self.ensure_one()
         quote = quote or self._get_active_envia_quote()
         if quote and (quote.destination_identification_number or "").strip():
@@ -321,27 +336,11 @@ class SaleOrder(models.Model):
         )
 
     def _envia_raise_missing_hs_redirect(self, products):
-        """Open Envia Ecommerce Pro embed when HS codes are missing."""
+        """RedirectWarning → Envia ``/products/edit-bulk`` when HS codes missing."""
         self.ensure_one()
-        names = ", ".join(products.mapped("display_name"))
-        if len(products) == 1:
-            message = _(
-                "Product %(name)s needs an Envia HS code (product code).\n"
-                "Set it on the Odoo product (Envia HS code), or in Envia "
-                "Ecommerce Pro, then try again.",
-                name=names,
-            )
-        else:
-            message = _(
-                "These products need an Envia HS code (product code): %(name)s.\n"
-                "Set them on the Odoo products (Envia HS code), or in Envia "
-                "Ecommerce Pro, then try again.",
-                name=names,
-            )
-        # Dashboard embed (ecommerce?hash=). /products/edit-bulk excludes
-        # client roles and Envia SPA sends those users home.
+        message = missing_product_code_user_message(products.mapped("display_name"))
         action = self.env.ref(
-            "envia.action_envia_products_edit_bulk_dashboard",
+            "envia.action_envia_open_products_edit_bulk",
             raise_if_not_found=False,
         )
         if action:
@@ -349,29 +348,128 @@ class SaleOrder(models.Model):
         raise UserError(message)
 
     def _envia_validate_international_label(self, quote=None):
-        """Hard-gate international label/create (checkout remains non-blocking).
-
-        ponytail: local HS/tax gates disabled for now — generate always hits
-        Envia ``label/create`` so the UI shows the API raw error (sandbox and
-        production). Re-enable validate_international_generate + HS redirect
-        when product wants Odoo-side messaging again.
-        """
-        self.ensure_one()
-        return
-
-    def _envia_label_create_extras(self, quote=None):
+        """Hard-gate tax IDs before Envia ``label/create`` (HS stays Envia-side)."""
         self.ensure_one()
         quote = quote or self._get_active_envia_quote()
         if not self._envia_is_international(quote):
-            return {}
-        export_reason = normalize_export_reason(
-            (quote.export_reason if quote else None) or self.envia_export_reason
+            return
+        origin_tax = self._envia_resolve_origin_tax_id(quote)
+        destination_tax = self._envia_resolve_destination_tax_id(quote)
+        if origin_tax and destination_tax:
+            return
+        # Prefer the customs modal over Envia's raw identification_number error.
+        raise UserError(
+            _(
+                "International shipments need origin and destination tax IDs.\n"
+                "Open Generate Envia Label again to fill the customs form, "
+                "or set the fiscal ID (VAT) on the delivery address."
+            )
         )
-        return build_label_create_customs_payload(
-            origin_tax_id=self._envia_resolve_origin_tax_id(quote),
-            destination_tax_id=self._envia_resolve_destination_tax_id(quote),
-            export_reason=export_reason,
+
+    def _envia_label_create_origin_contact(self, quote=None):
+        self.ensure_one()
+        quote = quote or self._get_active_envia_quote()
+        partner = (
+            quote.origin_partner_id
+            if quote and quote.origin_partner_id
+            else False
         )
+        if not partner:
+            warehouse = self.warehouse_id
+            partner = (
+                warehouse.partner_id
+                if warehouse and warehouse.partner_id
+                else self.company_id.partner_id
+            )
+        contact = PayloadMapper.partner_to_contact(partner)
+        if quote:
+            if quote.origin_state:
+                contact.state = quote.origin_state
+            if quote.origin_country:
+                contact.country = quote.origin_country
+            if quote.origin_postal_code:
+                contact.postal_code = quote.origin_postal_code
+            if quote.origin_city:
+                contact.city = quote.origin_city
+        contact.identification_number = self._envia_resolve_origin_tax_id(quote)
+        return contact
+
+    def _envia_label_create_destination_contact(self, quote=None):
+        self.ensure_one()
+        quote = quote or self._get_active_envia_quote()
+        partner = self.partner_shipping_id or self.partner_id
+        if not partner:
+            return False
+        contact = PayloadMapper.partner_to_contact(partner)
+        if quote:
+            if quote.destination_state:
+                contact.state = quote.destination_state
+            if quote.destination_country:
+                contact.country = quote.destination_country
+            if quote.destination_postal_code:
+                contact.postal_code = quote.destination_postal_code
+            if quote.destination_city:
+                contact.city = quote.destination_city
+        contact.identification_number = self._envia_resolve_destination_tax_id(quote)
+        return contact
+
+    def _envia_label_create_extras(self, quote=None):
+        """Extras for ecommerce label/create (intl addresses + branches + customs)."""
+        self.ensure_one()
+        quote = quote or self._get_active_envia_quote()
+        extras = {}
+        service = quote.selected_service_id if quote else False
+        branches = (
+            label_create_branch_payload(
+                service.drop_off,
+                quote.origin_branch_code,
+                quote.destination_branch_code,
+            )
+            if service
+            else {}
+        )
+        international = self._envia_is_international(quote)
+        if international:
+            origin_contact = self._envia_label_create_origin_contact(quote)
+            dest_contact = self._envia_label_create_destination_contact(quote)
+            origin = EnviaOfficialAdapter.contact_to_label_create_address(origin_contact)
+            destination = (
+                EnviaOfficialAdapter.contact_to_label_create_address(dest_contact)
+                if dest_contact
+                else {}
+            )
+            if branches.get("origin", {}).get("branchCode"):
+                origin["branchCode"] = branches["origin"]["branchCode"]
+            if destination and branches.get("destination", {}).get("branchCode"):
+                destination["branchCode"] = branches["destination"]["branchCode"]
+            extras["origin"] = origin
+            if destination:
+                extras["destination"] = destination
+            extras.update(
+                build_label_create_customs_payload(
+                    origin_tax_id=self._envia_resolve_origin_tax_id(quote),
+                    destination_tax_id=self._envia_resolve_destination_tax_id(quote),
+                    export_reason=normalize_export_reason(
+                        (quote.export_reason if quote else None)
+                        or self.envia_export_reason
+                    ),
+                )
+            )
+            return extras
+        # Domestic: branch codes + destination address (state code for Envia XML-RPC).
+        dest_contact = self._envia_label_create_destination_contact(quote)
+        if dest_contact and (dest_contact.state or "").strip():
+            destination = EnviaOfficialAdapter.contact_to_label_create_address(
+                dest_contact
+            )
+            if branches.get("destination", {}).get("branchCode"):
+                destination["branchCode"] = branches["destination"]["branchCode"]
+            extras["destination"] = destination
+        elif branches.get("destination"):
+            extras["destination"] = branches["destination"]
+        if branches.get("origin"):
+            extras["origin"] = branches["origin"]
+        return extras
 
     def _get_active_envia_quote(self):
         self.ensure_one()

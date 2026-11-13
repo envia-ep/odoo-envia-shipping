@@ -306,6 +306,36 @@ class TestEnviaClient(TransactionCase):
         self.assertEqual(error.exception.args[1], action.id)
         self.assertIn("Feature not enabled for this shop.", str(error.exception.args[0]))
 
+    def test_label_create_missing_product_code_redirects_to_edit_bulk(self):
+        from unittest.mock import MagicMock, patch
+
+        from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
+        from odoo.exceptions import RedirectWarning
+
+        action = self.env.ref("envia.action_envia_open_products_edit_bulk")
+        adapter = EnviaOfficialAdapter(
+            MagicMock(token="token"),
+            shop_id="133245",
+            products_edit_bulk_action_id=action.id,
+        )
+        with patch(
+            "odoo.addons.envia.services.envia_official_adapter.EnviaClient._post",
+            return_value={
+                "status": False,
+                "message": (
+                    'International generate requires items.productCode '
+                    '(HS code). Missing for "Jean Jacket"'
+                ),
+            },
+        ):
+            with self.assertRaises(RedirectWarning) as error:
+                adapter.create_label_for_odoo_order(42, service_id=1)
+        self.assertEqual(error.exception.args[1], action.id)
+        message = str(error.exception.args[0])
+        self.assertIn("Jean Jacket", message)
+        self.assertIn("HS code", message.casefold())
+        self.assertNotIn("Envia raw error", message)
+
     def test_label_create_feature_not_enabled_redirects_with_spanish_message(self):
         """UI language ES humanizes first; redirect must still fire."""
         from odoo.addons.envia.services.envia_official_adapter import EnviaOfficialAdapter
